@@ -1,5 +1,15 @@
 # MiniHarvey
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/<NETLIFY_SITE_API_ID>/deploy-status)](https://app.netlify.com/sites/mini-harvey/deploys)
+[![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/2k1mj.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
+[![Render](https://img.shields.io/badge/render-live-46e3b7?logo=render&logoColor=white)](https://miniharvery.onrender.com/api/v1/health)
+
+<!--
+  Netlify badge: replace <NETLIFY_SITE_API_ID> with your Site API ID.
+  Find it in Netlify dashboard → Site settings → General → Site details → API ID,
+  or: Site settings → General → Status badges (it builds the full markdown for you).
+-->
+
 **An AI research workbench for Indian law.**
 Ask a question, get a structured legal brief — Issue, Governing Law, Authorities, Discussion, Conclusion, Recommended Actions — backed by citations from Indian Kanoon, India Code, and curated web sources.
 
