@@ -35,25 +35,23 @@ Inspired by [MiniPerplexity](https://github.com/paritoshtripathi935/MiniPerplexi
 
 ---
 
-## Screenshot
+## Screenshots
 
-The interface is a three-pane workbench:
+### Sign-in — cinematic landmark-case slideshow
 
-```
-┌──────────────┬─────────────────────────────┬──────────────┐
-│  Threads     │                             │  Sources     │
-│  + Workbook  │        Legal Brief          │  + Videos    │
-│  (pinned)    │    (Issue → Conclusion)     │  (per query) │
-│              │                             │              │
-│              │                             │              │
-│              │─────────────────────────────│              │
-│              │   [ Ask a question… ]       │              │
-└──────────────┴─────────────────────────────┴──────────────┘
-```
+![MiniHarvey sign-in page](./assets/login.png)
 
-- Left sidebar: Threads (history) + Workbook (pinned sources). Each section individually collapsible; whole sidebar collapses to a thin icon rail.
-- Center: the Brief — a typography-first legal memo with a gold Conclusion callout.
-- Right sidebar: Sources (color-tagged by provider) + Videos. Also individually collapsible.
+A split-screen login: on the left, a rotating slideshow of landmark Indian cases (Kesavananda Bharati, Maneka Gandhi, Vishaka, Puttaswamy, Navtej Singh Johar) layered over Wikimedia imagery of the Supreme Court; on the right, a Clerk sign-in card styled in chambers navy + gold, with a "Continue as guest" escape hatch and the सत्यमेव जयते motto.
+
+### Workbench — three-pane research layout
+
+![MiniHarvey workbench with an active brief](./assets/workbench.png)
+
+The three-pane research surface in action. A corporate-merger query streams back a structured brief — **Issue → Governing Law → Authorities → Discussion** — with the Threads rail on the left, Sources + Explainer Videos on the right, and the composer docked beneath the brief for follow-ups.
+
+- **Left sidebar** — Threads (history) + Workbook (pinned sources). Each section individually collapsible; the whole rail collapses to a thin icon strip.
+- **Center** — the Brief: a typography-first legal memo with a gold Conclusion callout, clickable citation chips, and a follow-up chip strip.
+- **Right sidebar** — Sources (color-tagged by provider — Kanoon / India Code / Google / Wikipedia) + YouTube Explainer Videos. Also individually collapsible.
 
 ---
 
