@@ -7,7 +7,8 @@
  */
 import { useState, useEffect } from 'react';
 import { SignIn } from '@clerk/clerk-react';
-import { Scale, ChevronDown, ExternalLink } from 'lucide-react';
+import { Scale, ChevronDown, ExternalLink, UserRound, ArrowRight } from 'lucide-react';
+import { useGuest } from '../hooks/useGuest';
 
 interface Slide {
   image: string;
@@ -133,6 +134,7 @@ const SLIDE_INTERVAL_MS = 6000;
 export default function LoginPage() {
   const [slideIdx, setSlideIdx] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const { enterGuest } = useGuest();
 
   // Auto-advance slideshow (paused while the summary is expanded)
   useEffect(() => {
@@ -478,6 +480,62 @@ export default function LoginPage() {
                 },
               }}
             />
+          </div>
+
+          {/* ─── Guest mode ──────────────────────────────────────
+              An escape hatch for folks who want to try MiniHarvey
+              without creating an account. Session-scoped, no history,
+              no pinned Workbook across visits. */}
+          <div className="w-full max-w-sm mt-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="flex-1 h-px"
+                style={{ backgroundColor: 'rgba(26,48,96,0.8)' }}
+              />
+              <span
+                className="text-[10px] uppercase tracking-widest"
+                style={{ color: '#6b7280', letterSpacing: '0.25em' }}
+              >
+                or
+              </span>
+              <div
+                className="flex-1 h-px"
+                style={{ backgroundColor: 'rgba(26,48,96,0.8)' }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={enterGuest}
+              className="group w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium cursor-pointer transition-all"
+              style={{
+                backgroundColor: 'transparent',
+                border: '1px solid rgba(212,160,23,0.4)',
+                color: '#f0c040',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.backgroundColor = 'rgba(212,160,23,0.08)';
+                e.currentTarget.style.borderColor = '#d4a017';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.borderColor = 'rgba(212,160,23,0.4)';
+              }}
+            >
+              <UserRound size={14} />
+              Continue as guest
+              <ArrowRight
+                size={14}
+                className="transition-transform group-hover:translate-x-0.5"
+              />
+            </button>
+
+            <p
+              className="text-[10px] text-center mt-2 italic"
+              style={{ color: '#6b7280' }}
+            >
+              Browse this session only — threads won't be saved after you close the tab.
+            </p>
           </div>
 
           {/* Disclaimer */}

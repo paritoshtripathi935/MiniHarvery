@@ -5,8 +5,9 @@
  */
 import { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Scale } from 'lucide-react';
+import { Scale, LogOut } from 'lucide-react';
 import { SignedIn, SignedOut, UserButton, useUser } from '@clerk/clerk-react';
+import { useGuest } from './hooks/useGuest';
 import { performLegalSearch, getLegalAnswer, clearSession } from './services/api';
 import type { Message, Citation, QueryType, LegalSearchResult, VideoResult } from './types';
 import SearchBar from './components/SearchBar';
@@ -24,6 +25,12 @@ export default function App() {
   // applied on first paint (before any child subscribes).
   useTheme();
 
+  const { isGuest } = useGuest();
+
+  // Guest mode bypasses Clerk entirely — the workbench still renders because
+  // every user_id path in the app already treats the id as optional.
+  if (isGuest) return <AuthenticatedApp />;
+
   return (
     <>
       <SignedOut>
@@ -38,6 +45,7 @@ export default function App() {
 
 function AuthenticatedApp() {
   const { user } = useUser();
+  const { isGuest, exitGuest } = useGuest();
   const [sessionId] = useState<string>(() => uuidv4());
   const [messages, setMessages] = useState<Message[]>([]);
   // activeThreadId:
@@ -275,7 +283,33 @@ function AuthenticatedApp() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <UserButton afterSignOutUrl="/" />
+          {isGuest ? (
+            <button
+              onClick={exitGuest}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium cursor-pointer border transition-colors"
+              style={{
+                backgroundColor: 'var(--surface-hover)',
+                color: 'var(--text-muted)',
+                borderColor: 'var(--border)',
+              }}
+              title="Exit guest mode and return to sign-in"
+            >
+              <span
+                className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-widest"
+                style={{
+                  backgroundColor: 'var(--accent)',
+                  color: 'var(--bg)',
+                  letterSpacing: '0.15em',
+                }}
+              >
+                Guest
+              </span>
+              <span>Exit</span>
+              <LogOut size={12} />
+            </button>
+          ) : (
+            <UserButton afterSignOutUrl="/" />
+          )}
         </div>
       </header>
 
