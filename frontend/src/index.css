@@ -1,0 +1,302 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   Theme tokens — the app's entire surface palette routes through
+   these variables so [data-theme="light"] can swap everything at
+   once. Gold accent stays (with a slightly deeper gold on paper
+   for contrast); the navy/cream axis swaps.
+   ──────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="dark"] {
+  --bg: #050d1f;              /* page background */
+  --surface: #071224;          /* sidebars, composer, header */
+  --surface-raised: #0a1628;   /* cards */
+  --surface-active: #0d1d35;   /* pinned / selected card */
+  --surface-hover: #112040;    /* button hover, active thread */
+  --border: #1a3060;
+  --border-subtle: rgba(26, 48, 96, 0.55);
+  --scrollbar-track: #0a1628;
+  --scrollbar-thumb: #243d7a;
+
+  --text: #f3f4f6;             /* primary */
+  --text-bright: #e5e7eb;      /* memo body */
+  --text-secondary: #d1d5db;
+  --text-muted: #9ca3af;
+  --text-dim: #6b7280;
+  --text-conclusion: #f0e8d0;  /* warm cream on dark */
+
+  --accent: #d4a017;           /* gold */
+  --accent-bright: #f0c040;
+  --accent-soft: rgba(212, 160, 23, 0.45);
+  --accent-flash: rgba(212, 160, 23, 0.55);
+}
+
+[data-theme="light"] {
+  --bg: #f7f2e6;               /* warm legal paper */
+  --surface: #ffffff;           /* crisp white panels */
+  --surface-raised: #fbf7eb;    /* cream cards */
+  --surface-active: #f0e6c8;    /* pinned card — dirty gold */
+  --surface-hover: #ede5cf;     /* parchment hover */
+  --border: #d8cfb3;
+  --border-subtle: rgba(177, 163, 124, 0.45);
+  --scrollbar-track: #ede5cf;
+  --scrollbar-thumb: #c7b98c;
+
+  --text: #1a1f2e;              /* deep ink-navy */
+  --text-bright: #0f1420;
+  --text-secondary: #2f3544;
+  --text-muted: #5b6370;
+  --text-dim: #7a8292;
+  --text-conclusion: #3a2f10;   /* dark umber on cream */
+
+  --accent: #a6780a;            /* deeper gold for legibility on paper */
+  --accent-bright: #8a620a;
+  --accent-soft: rgba(166, 120, 10, 0.35);
+  --accent-flash: rgba(166, 120, 10, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+
+/* Legal markdown prose — legacy, used during streaming */
+.legal-prose h1, .legal-prose h2, .legal-prose h3 {
+  color: var(--accent);
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.legal-prose strong { color: var(--accent-bright); }
+.legal-prose p { margin-bottom: 0.75rem; line-height: 1.7; }
+.legal-prose ul, .legal-prose ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.legal-prose li { margin-bottom: 0.25rem; }
+.legal-prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+  color: var(--text-muted);
+  margin: 0.75rem 0;
+}
+.legal-prose a { color: var(--accent-bright); text-decoration: underline; }
+
+/* ──────────────────────────────────────────────────────────────
+   Memo-prose — document-style typography for the Brief.
+   Serif body, quiet hierarchy, gold only for emphasis.
+   ──────────────────────────────────────────────────────────── */
+.memo-prose {
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text-bright);
+  letter-spacing: 0.005em;
+}
+.memo-prose p {
+  margin: 0 0 0.9em 0;
+}
+.memo-prose p:last-child { margin-bottom: 0; }
+.memo-prose strong {
+  color: var(--accent-bright);
+  font-weight: 600;
+}
+.memo-prose em {
+  color: var(--text-bright);
+  font-style: italic;
+}
+.memo-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.memo-prose ul, .memo-prose ol {
+  padding-left: 1.5em;
+  margin: 0 0 0.9em 0;
+}
+.memo-prose li {
+  margin-bottom: 0.4em;
+}
+.memo-prose blockquote {
+  border-left: 2px solid var(--accent);
+  padding: 0.2em 0 0.2em 1em;
+  margin: 1em 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.memo-prose h1, .memo-prose h2, .memo-prose h3, .memo-prose h4 {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 1.6em 0 0.8em 0;
+}
+
+/* Authorities (Relevant Cases) — each <li> is a case line.
+   Case name italic, citation monospace gold, court muted. */
+.memo-authorities li {
+  padding-left: 0;
+  margin-bottom: 0.9em;
+  list-style: none;
+  font-family: Georgia, serif;
+  color: var(--text-bright);
+  line-height: 1.55;
+}
+.memo-authorities li::before {
+  content: "§";
+  color: var(--accent);
+  margin-right: 0.75em;
+  font-weight: bold;
+}
+
+/* Section heading — small caps with a quiet rule */
+.memo-heading {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-bottom: 6px;
+  margin: 28px 0 14px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+/* Don't zero margins on section-wrapped headings — each section wraps its
+   own <h2>, so :first-child would kill the gap between every section. The
+   first heading of the memo still breathes from the masthead above. */
+.memo-heading.memo-heading-first { margin-top: 0; }
+
+/* Conclusion callout — the one place a rule is earned */
+.memo-conclusion {
+  font-family: Georgia, serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-conclusion);
+  border-left: 2px solid var(--accent);
+  padding: 8px 0 8px 18px;
+  margin: 8px 0 0 0;
+  font-style: italic;
+}
+.memo-conclusion strong {
+  color: var(--accent-bright);
+  font-style: normal;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Dev banner — thin amber "live news" ticker above the header.
+   Pure-CSS marquee: two copies of the track translate in lockstep
+   so the seam is invisible.
+   ──────────────────────────────────────────────────────────── */
+.dev-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 24px;
+  padding: 0 10px 0 0;
+  background: linear-gradient(
+    90deg,
+    rgba(212, 160, 23, 0.18) 0%,
+    rgba(212, 160, 23, 0.06) 100%
+  );
+  border-bottom: 1px solid var(--accent-soft);
+  overflow: hidden;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.dev-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 100%;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dev-banner-pulse {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  animation: dev-banner-pulse 1.4s ease-out infinite;
+}
+
+@keyframes dev-banner-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.dev-banner-viewport {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.dev-banner-track {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  padding-right: 40px;
+  flex-shrink: 0;
+  animation: dev-banner-scroll 48s linear infinite;
+  white-space: nowrap;
+}
+
+.dev-banner-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.dev-banner-dot {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+@keyframes dev-banner-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+
+/* Respect reduced-motion — pause the crawl, show the first messages static */
+@media (prefers-reduced-motion: reduce) {
+  .dev-banner-track { animation: none; }
+  .dev-banner-pulse { animation: none; }
+}

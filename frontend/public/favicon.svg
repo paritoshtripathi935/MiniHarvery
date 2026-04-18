@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <rect width="48" height="48" rx="8" fill="#050d1f"/>
+  <g stroke="#d4a017" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- central post -->
+    <path d="M24 10v28"/>
+    <!-- base -->
+    <path d="M16 38h16"/>
+    <!-- crossbar -->
+    <path d="M10 14h28"/>
+    <!-- left pan lines -->
+    <path d="M14 14l-4 10"/>
+    <path d="M14 14l4 10"/>
+    <!-- right pan lines -->
+    <path d="M34 14l-4 10"/>
+    <path d="M34 14l4 10"/>
+  </g>
+  <!-- pan bowls -->
+  <path d="M6 24h12a6 6 0 01-12 0z" fill="#d4a017"/>
+  <path d="M30 24h12a6 6 0 01-12 0z" fill="#d4a017"/>
+  <!-- top finial -->
+  <circle cx="24" cy="10" r="2" fill="#d4a017"/>
+</svg>

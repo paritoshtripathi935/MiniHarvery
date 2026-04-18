@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+requests
+python-decouple
+bs4
+gunicorn
+python-jose[cryptography]
+httpx
