@@ -1,25 +1,26 @@
 # MiniHarvey
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/957197d8-bf32-4331-b734-f7e2ff09d515/deploy-status)](https://app.netlify.com/sites/mini-harvey/deploys)
-[![Better Stack Badge](https://uptime.betterstack.com/status-badges/v1/monitor/2k1mj.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
-[![Render](https://img.shields.io/badge/render-live-46e3b7?logo=render&logoColor=white)](https://miniharvery.onrender.com/api/v1/health)
-
-<!--
-  Netlify badge: replace <NETLIFY_SITE_API_ID> with your Site API ID.
-  Find it in Netlify dashboard → Site settings → General → Site details → API ID,
-  or: Site settings → General → Status badges (it builds the full markdown for you).
--->
-
 **An AI research workbench for Indian law.**
-Ask a question, get a structured legal brief — Issue, Governing Law, Authorities, Discussion, Conclusion, Recommended Actions — backed by citations from Indian Kanoon, India Code, and curated web sources.
+Ask a question, get a structured legal brief — *Issue · Governing Law · Authorities · Discussion · Conclusion · Recommended Actions* — backed by live citations from Indian Kanoon, India Code, and curated web sources.
 
-> ⚠️ Under active development. MiniHarvey provides **legal information only**, not legal advice. For your matter, consult an advocate registered with the Bar Council of India.
+### 🔗 [**Try the live demo →**](https://mini-harvey.netlify.app/)
+
+[![Netlify Status](https://api.netlify.com/api/v1/badges/957197d8-bf32-4331-b734-f7e2ff09d515/deploy-status)](https://app.netlify.com/sites/mini-harvey/deploys)
+[![Uptime](https://uptime.betterstack.com/status-badges/v1/monitor/2k1mj.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
+[![Render](https://img.shields.io/badge/render-live-46e3b7?logo=render&logoColor=white)](https://miniharvery.onrender.com/api/v1/health)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React 18](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=black)](https://react.dev/)
+[![Cloudflare AI](https://img.shields.io/badge/Cloudflare-LLaMA%203.1%2070B-f38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/workers-ai/)
+
+> ⚠️ **Legal information, not legal advice.** MiniHarvey is under active development. For your matter, consult an advocate registered with the Bar Council of India.
 
 ---
 
 ## What it does
 
-MiniHarvey turns a plain-English legal question ("What are my rights if arrested without a warrant?") into a memo-style answer with:
+MiniHarvey turns a plain-English legal question (*"What are my rights if arrested without a warrant?"*) into a memo-style answer with:
 
 - **Query rewriting** — your natural-language question is rewritten into a keyword-dense search query before hitting the providers.
 - **Parallel search** across **Indian Kanoon** (case law), **India Code** (statutes/acts), and **Google CSE** (curated Indian legal web).
@@ -57,42 +58,59 @@ The three-pane research surface in action. A corporate-merger query streams back
 
 ## Architecture
 
-```
-┌─────────────┐       ┌──────────────────┐        ┌────────────────────┐
-│  React UI   │──────►│  FastAPI Backend │───────►│  Cloudflare LLM    │
-│  (Vite)     │  SSE  │  (Render)        │        │  Llama 3.1 70B     │
-└─────────────┘       └────────┬─────────┘        └────────────────────┘
-                               │
-                               │ parallel, ThreadPoolExecutor
-                               ▼
-                    ┌─────────┬──────────┬─────────┐
-                    │  Indian │  India   │  Google │
-                    │  Kanoon │  Code    │  CSE    │
-                    └─────────┴──────────┴─────────┘
+```mermaid
+flowchart LR
+    UI["React UI<br/>(Vite + Tailwind)"]
+    API["FastAPI Backend<br/>(Render)"]
+    LLM["Cloudflare AI<br/>Llama 3.1 70B"]
+
+    UI -- "POST /search, /answer (SSE)" --> API
+    API -- "Query rewrite + streaming chat" --> LLM
+
+    API --> K["Indian Kanoon<br/>(case law API)"]
+    API --> IC["India Code<br/>(statutes scrape)"]
+    API --> G["Google CSE<br/>(curated legal web)"]
+    API --> YT["YouTube Data API<br/>(explainer videos)"]
+
+    classDef svc fill:#0f2d4a,stroke:#d4af37,color:#fff
+    classDef ext fill:#f5efe0,stroke:#0f2d4a,color:#0f2d4a
+    class UI,API,LLM svc
+    class K,IC,G,YT ext
 ```
 
 ### Request pipeline
 
-```
-User query
-  ↓
-Query classifier      (case_law / statute / general — keyword heuristic)
-  ↓
-Query rewriter        (Cloudflare LLM, 8s timeout, falls back silently to raw)
-  ↓
-Parallel search       (Indian Kanoon + India Code + Google CSE, 3 workers)
-  ↓
-Round-robin merge     (one result per provider per rank slot)
-  ↓
-Answer generation     (Cloudflare LLM, SSE streaming, max_tokens: 2048)
-  ↓
-Citation extraction   (AIR / SCC / Section / Article regex)
-  ↓
-SSE final frame:      { citations, suggested_steps, follow_ups }
+```mermaid
+flowchart TD
+    Q["User query"] --> C{"Classifier<br/>(case_law / statute / general)"}
+    C --> R["Query rewriter<br/>Cloudflare LLM · 8 s timeout<br/>silent fallback to raw"]
+    R --> P["Parallel search<br/>ThreadPoolExecutor · 3 workers"]
+    P --> P1["Indian Kanoon"]
+    P --> P2["India Code"]
+    P --> P3["Google CSE"]
+    P1 & P2 & P3 --> M["Round-robin merge<br/>(one per provider per rank)"]
+    M --> A["Answer generation<br/>Cloudflare LLM · SSE<br/>max_tokens: 2048"]
+    A --> X["Citation extraction<br/>AIR / SCC / Section / Article regex"]
+    X --> F["Final SSE frame:<br/>citations · suggested_steps · follow_ups"]
 ```
 
 ### Why not SCI?
 The Supreme Court of India's own portal (`main.sci.gov.in`) was pulled from the provider list — the judgment pages are JavaScript-rendered behind session cookies, the SSL certificate has a habit of expiring, and Indian Kanoon already indexes the full SC corpus with better metadata. If you need SC coverage, Indian Kanoon is the source of truth.
+
+---
+
+## Engineering highlights
+
+| Concern | How it's handled |
+| --- | --- |
+| **LLM latency** | Streaming (SSE) so users see the first section in <2 s instead of waiting for the full memo. |
+| **Provider dominance** | Round-robin merge — no single provider can drown the others by returning first. |
+| **Provider failure** | Per-provider try/except with empty-list fallback; a dead Kanoon call still leaves India Code + Google results. |
+| **Rate abuse** | Per-session sliding-window limiter (default 30 req/min), configurable via env. |
+| **Server-side state** | In-memory session store keyed by `session_id` with a configurable TTL (default 600 s). No DB dependency. |
+| **Hallucinated citations** | System prompt pins `AIR / SCC / Section / Article` formats; citation regex extracts only well-formed references for the chip row. |
+| **Cold-start drift** | Query rewriter has an 8 s hard timeout; on failure the raw user query is used so the answer endpoint never blocks on rewrite. |
+| **CORS & secrets** | All tokens server-side; `ALLOWED_ORIGINS` locks CORS to the Netlify domain in prod. |
 
 ---
 
@@ -261,6 +279,16 @@ Never invent citations. Always end with the disclaimer.
 
 ---
 
+## Roadmap
+
+- **Citation verifier** — re-fetch every AIR/SCC/Section citation and programmatically check the case name / section number exists; flag hallucinated cites in the UI.
+- **Semantic cache** — Redis vector cache over recent queries to cut repeat-query LLM spend.
+- **Hybrid retrieval** — BM25 + embedding + cross-encoder rerank over the merged result set, scored with nDCG@10.
+- **Eval harness** — 30–50 golden questions with expected authorities, run in CI.
+- **Observability** — OpenTelemetry traces and a Grafana board for p99 latency and token cost per query.
+
+---
+
 ## Deploy
 
 - **Frontend → Netlify.** `netlify.toml` points to `frontend/` with `npm run build`.
@@ -277,4 +305,4 @@ Architecture borrowed from [MiniPerplexity](https://github.com/paritoshtripathi9
 
 ## License
 
-See `LICENSE` (MIT recommended, TBD).
+MIT — see [`LICENSE`](LICENSE).
