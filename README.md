@@ -60,38 +60,77 @@ The three-pane research surface in action. A corporate-merger query streams back
 
 ```mermaid
 flowchart LR
-    UI["React UI<br/>(Vite + Tailwind)"]
-    API["FastAPI Backend<br/>(Render)"]
-    LLM["Cloudflare AI<br/>Llama 3.1 70B"]
+    subgraph Client["Browser"]
+        UI["React 18 · Vite · Tailwind 4<br/>Clerk auth · three-pane workbench"]
+    end
 
-    UI -- "POST /search, /answer (SSE)" --> API
-    API -- "Query rewrite + streaming chat" --> LLM
+    subgraph Backend["FastAPI · Render"]
+        direction TB
+        RL["⚡ Rate limiter<br/>Token bucket · 30 req/min<br/>keyed by endpoint×user"]
+        H["Query handler<br/>/search · /answer (SSE)<br/>/session · /health"]
+        QC["Classifier<br/>case_law · statute · general<br/>(keyword heuristic, no LLM)"]
+        PM["📝 Prompt manager<br/>• Harvey memo prompt (6-section)<br/>• Rewriter prompt (keyword extractor)<br/>• Output guardrails"]
+        FS["🧹 Filter & extractor<br/>• BS4 strip script/nav/footer/aside<br/>• AIR / SCC / § / Art citation regex<br/>• URL dedup + round-robin merge"]
+    end
 
-    API --> K["Indian Kanoon<br/>(case law API)"]
-    API --> IC["India Code<br/>(statutes scrape)"]
-    API --> G["Google CSE<br/>(curated legal web)"]
-    API --> YT["YouTube Data API<br/>(explainer videos)"]
+    subgraph External["External services"]
+        LLM["Cloudflare AI Workers<br/>LLaMA 3.1 70B"]
+        K["Indian Kanoon API"]
+        IC["India Code scrape"]
+        G["Google CSE"]
+        YT["YouTube Data v3<br/>safeSearch: strict"]
+    end
 
-    classDef svc fill:#0f2d4a,stroke:#d4af37,color:#fff
+    UI -- "HTTPS · SSE" --> RL
+    RL -- "429 on burst" --> UI
+    RL --> H
+    H --> QC --> PM
+    PM <-. "rewrite · 8 s timeout" .-> LLM
+    PM <-. "memo · stream · 2048 tok" .-> LLM
+    H --> K
+    H --> IC
+    H --> G
+    H --> YT
+    K --> FS
+    IC --> FS
+    G --> FS
+    FS --> UI
+    LLM -- "token stream" --> UI
+    YT -- "explainer cards" --> UI
+
+    classDef ours fill:#0f2d4a,stroke:#d4af37,color:#fff
     classDef ext fill:#f5efe0,stroke:#0f2d4a,color:#0f2d4a
-    class UI,API,LLM svc
-    class K,IC,G,YT ext
+    class UI,RL,H,QC,PM,FS ours
+    class LLM,K,IC,G,YT ext
 ```
 
 ### Request pipeline
 
 ```mermaid
 flowchart TD
-    Q["User query"] --> C{"Classifier<br/>(case_law / statute / general)"}
-    C --> R["Query rewriter<br/>Cloudflare LLM · 8 s timeout<br/>silent fallback to raw"]
-    R --> P["Parallel search<br/>ThreadPoolExecutor · 3 workers"]
-    P --> P1["Indian Kanoon"]
-    P --> P2["India Code"]
-    P --> P3["Google CSE"]
-    P1 & P2 & P3 --> M["Round-robin merge<br/>(one per provider per rank)"]
-    M --> A["Answer generation<br/>Cloudflare LLM · SSE<br/>max_tokens: 2048"]
-    A --> X["Citation extraction<br/>AIR / SCC / Section / Article regex"]
-    X --> F["Final SSE frame:<br/>citations · suggested_steps · follow_ups"]
+    Q["User query<br/>(natural language)"] --> RL{"⚡ Rate limit<br/>token bucket · 30/min<br/>per endpoint×user"}
+    RL -- "over limit" --> E429["HTTP 429<br/>+ retry hint"]
+    RL -- "pass" --> QC["🏷 Classifier<br/>case_law / statute / general<br/>keyword scoring · no LLM call"]
+    QC --> RW["📝 Rewriter prompt<br/>_REWRITE_SYSTEM · Cloudflare LLM<br/>8 s hard timeout"]
+    RW --> RWG{"Rewrite guardrails<br/>len 3–200 · strip quotes<br/>reject refusal prefixes"}
+    RWG -- "bad / slow / empty" --> RAW["Fall back to raw query<br/>(search never blocks on rewrite)"]
+    RWG -- "good" --> PAR["⚡ Parallel fan-out<br/>ThreadPoolExecutor · 3 workers"]
+    RAW --> PAR
+    PAR --> IK["Indian Kanoon<br/>(authority)"]
+    PAR --> ICS["India Code<br/>(statutes)"]
+    PAR --> GC["Google CSE<br/>(fill gaps)"]
+    PAR --> YTS["YouTube Data v3<br/>'Indian law explained'<br/>safeSearch: strict"]
+    IK --> CX["🧹 Content extractor<br/>BS4 · strip script / style / nav<br/>footer / header / noscript / aside<br/>cap 2000 chars"]
+    ICS --> CX
+    GC --> CX
+    CX --> RR["Round-robin merge<br/>Kanoon → IndiaCode → Google<br/>(authority order)"]
+    RR --> DD["URL dedup<br/>first occurrence wins"]
+    DD --> AP["📝 Harvey memo prompt<br/>_SYSTEM_PROMPT + search context<br/>+ last 3 session queries"]
+    AP --> LLM["Cloudflare LLaMA 3.1 70B<br/>stream · max_tokens 2048 · 90 s timeout"]
+    LLM -- "SSE chunks" --> UI["Brief renders live"]
+    LLM --> CF["Citation extractor<br/>AIR / SCC / § / Art regex<br/>(everything else discarded)"]
+    CF --> FIN["Final SSE frame:<br/>citations · suggested_steps<br/>· follow_ups"]
+    YTS --> VID["Video cards sidebar"]
 ```
 
 ### Why not SCI?
