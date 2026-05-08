@@ -5,7 +5,13 @@ services:
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 -b 0.0.0.0:$PORT main:app
+    # --timeout 300: SSE /answer streams can run 30-60s while Cloudflare AI
+    #   generates the legal brief; gunicorn's default 30s would kill the worker
+    #   mid-stream (we hit this in production logs on 2026-05-08).
+    # --graceful-timeout 30: keep deploys snappy when the worker is replaced.
+    # --keep-alive 65: longer than typical CDN/proxy idle (60s) so SSE
+    #   connections aren't closed by an upstream before the stream finishes.
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 -b 0.0.0.0:$PORT --timeout 300 --graceful-timeout 30 --keep-alive 65 main:app
     healthCheckPath: /api/v1/health
     envVars:
       - key: ENV
