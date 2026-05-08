@@ -24,6 +24,8 @@ class CallerIdentity:
     """Resolved identity for a single request."""
     user_id: uuid.UUID
     clerk_user_id: str
+    mode: str
+    inbox_matter_id: uuid.UUID
 
     @property
     def subject(self) -> str:
@@ -87,15 +89,21 @@ async def resolve_caller(request: Request) -> CallerIdentity:
     clerk_user_id = claims["sub"]
     async with AsyncSessionLocal() as db:
         try:
-            user_id = await repo.upsert_clerk_user(
+            user = await repo.upsert_clerk_user(
                 db,
                 clerk_user_id=clerk_user_id,
                 email=_email_from_claims(claims),
                 display_name=_name_from_claims(claims),
             )
+            inbox = await repo.ensure_inbox_matter(db, user.id)
             await db.commit()
         except Exception:
             await db.rollback()
             raise
 
-    return CallerIdentity(user_id=user_id, clerk_user_id=clerk_user_id)
+    return CallerIdentity(
+        user_id=user.id,
+        clerk_user_id=clerk_user_id,
+        mode=user.mode,
+        inbox_matter_id=inbox.id,
+    )
