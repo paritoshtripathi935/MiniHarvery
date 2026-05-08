@@ -29,6 +29,8 @@ interface Props {
   flashUrl?: string;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** Optional render-prop for the active matter's documents (case briefs, etc.). */
+  documentsSlot?: React.ReactNode;
 }
 
 /** A conversation — the first message plus any follow-ups, sharing a threadId. */
@@ -103,9 +105,11 @@ export default function LeftSidebar({
   flashUrl,
   collapsed,
   onToggleCollapsed,
+  documentsSlot,
 }: Props) {
   const [threadsOpen, setThreadsOpen] = useState(true);
   const [workbookOpen, setWorkbookOpen] = useState(true);
+  const [documentsOpen, setDocumentsOpen] = useState(true);
 
   const threads = useMemo(() => groupIntoThreads(messages), [messages]);
 
@@ -274,6 +278,39 @@ export default function LeftSidebar({
           </>
         )}
       </div>
+
+      {/* ─── Documents (case briefs / drafts for the active matter) ────── */}
+      {documentsSlot && (
+        <div
+          className="flex flex-col min-h-0 border-t flex-shrink-0"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <header
+            className="flex items-center justify-between px-4 py-3 border-b"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <div className="flex items-center gap-2">
+              <SectionToggle
+                open={documentsOpen}
+                onClick={() => setDocumentsOpen(v => !v)}
+                label="Documents"
+              />
+              <BookMarked size={12} style={{ color: 'var(--accent)' }} />
+              <span
+                className="text-[11px] font-semibold uppercase tracking-widest"
+                style={{ color: 'var(--accent)', letterSpacing: '0.15em' }}
+              >
+                Documents
+              </span>
+            </div>
+          </header>
+          {documentsOpen && (
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
+              {documentsSlot}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── Workbook ────────────────────────────────────────────── */}
       <div

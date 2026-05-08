@@ -30,6 +30,8 @@ interface Props {
   isSearching?: boolean;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** Optional — when provided, each source gets a "Save as brief" button. */
+  onSaveAsBrief?: (result: LegalSearchResult) => void;
 }
 
 function SectionToggle({
@@ -66,6 +68,7 @@ export default function SourcesPanel({
   videos,
   pinnedUrls,
   onTogglePin,
+  onSaveAsBrief,
   flashUrl,
   isSearching,
   collapsed,
@@ -172,6 +175,7 @@ export default function SourcesPanel({
                 pinned={pinnedUrls.has(result.url)}
                 onTogglePin={url => onTogglePin(url, result)}
                 flash={flashUrl === result.url}
+                onSaveAsBrief={onSaveAsBrief ? () => onSaveAsBrief(result) : undefined}
               />
             ))}
           </div>

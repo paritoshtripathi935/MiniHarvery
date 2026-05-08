@@ -4,7 +4,7 @@
  * Supports expand, pin, and "open source" actions.
  */
 import { useState } from 'react';
-import { ExternalLink, Pin, PinOff, ChevronDown } from 'lucide-react';
+import { ExternalLink, Pin, PinOff, ChevronDown, FileText } from 'lucide-react';
 import type { LegalSearchResult } from '../types';
 import JurisdictionBadge from './JurisdictionBadge';
 
@@ -14,6 +14,8 @@ interface Props {
   onTogglePin: (url: string) => void;
   /** When true, the card flashes briefly to draw attention */
   flash?: boolean;
+  /** Optional — renders a "Save as brief" button on the footer. */
+  onSaveAsBrief?: () => void;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -30,7 +32,7 @@ const SOURCE_PROVENANCE: Record<string, { label: string; color: string }> = {
   google: { label: 'web · unverified', color: '#f59e0b' },
 };
 
-export default function CaseCard({ result, pinned, onTogglePin, flash }: Props) {
+export default function CaseCard({ result, pinned, onTogglePin, flash, onSaveAsBrief }: Props) {
   const [expanded, setExpanded] = useState(false);
   const sourceLabel = SOURCE_LABELS[result.source] ?? result.source;
   const provenance = SOURCE_PROVENANCE[result.source];
@@ -136,15 +138,27 @@ export default function CaseCard({ result, pinned, onTogglePin, flash }: Props) 
         ) : (
           <span />
         )}
-        <a
-          href={result.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] font-medium no-underline transition-colors"
-          style={{ color: 'var(--accent)' }}
-        >
-          Open source <ExternalLink size={9} />
-        </a>
+        <div className="flex items-center gap-3">
+          {onSaveAsBrief && (
+            <button
+              onClick={onSaveAsBrief}
+              className="flex items-center gap-1 text-[10px] font-medium cursor-pointer border-0 bg-transparent transition-colors"
+              style={{ color: 'var(--accent)' }}
+              title="Generate a structured case brief from this judgment"
+            >
+              <FileText size={9} /> Save as brief
+            </button>
+          )}
+          <a
+            href={result.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] font-medium no-underline transition-colors"
+            style={{ color: 'var(--accent)' }}
+          >
+            Open source <ExternalLink size={9} />
+          </a>
+        </div>
       </div>
     </div>
   );
