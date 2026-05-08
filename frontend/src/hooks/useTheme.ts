@@ -15,7 +15,7 @@ import { useEffect, useState, useCallback } from 'react';
 export type Theme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
 
-const STORAGE_KEY = 'miniharvey:theme';
+const STORAGE_KEY = 'vidhi:theme';
 
 function readStoredTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';

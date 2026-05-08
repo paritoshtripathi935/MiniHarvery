@@ -1,5 +1,5 @@
 """
-MiniHarvey backend — FastAPI entry point.
+Vidhi backend — FastAPI entry point.
 Structure mirrors MiniPerplexity's main.py.
 """
 import logging
@@ -18,8 +18,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="MiniHarvey",
-    description="Indian Legal AI Research Assistant",
+    title="Vidhi",
+    description="Indian legal research workbench — for working advocates.",
     version="1.0.0",
     docs_url="/docs" if settings.ENV == "dev" else None,
     redoc_url="/redoc" if settings.ENV == "dev" else None,
@@ -45,5 +45,5 @@ async def health():
 
 @app.on_event("startup")
 async def startup():
-    logger.info("MiniHarvey starting — ENV=%s", settings.ENV)
+    logger.info("Vidhi starting — ENV=%s", settings.ENV)
     logger.info("Allowed origins: %s", settings.allowed_origins_list)

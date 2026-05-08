@@ -1,4 +1,4 @@
--- MiniHarvey — initial schema
+-- Vidhi — initial schema
 -- Target: Neon Postgres 16+
 -- Companion doc: docs/database-design.md
 --

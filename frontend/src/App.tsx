@@ -1,5 +1,5 @@
 /**
- * Root component — MiniHarvey Research Workbench.
+ * Root component — Vidhi Research Workbench.
  * Three-pane layout: Threads (left) · Brief (center) · Sources + Workbook (right).
  *
  * History is server-backed. On mount we list the user's threads from the
@@ -37,7 +37,7 @@ import ThemeToggle from './components/ThemeToggle';
 import LoginPage from './components/LoginPage';
 import { useTheme } from './hooks/useTheme';
 
-const SESSION_STORAGE_KEY = 'miniharvey.sessionId';
+const SESSION_STORAGE_KEY = 'vidhi.sessionId';
 
 /** Get-or-create a stable session id for this browser. */
 function loadOrMintSessionId(): string {
@@ -387,10 +387,10 @@ function AuthenticatedApp() {
               className="text-lg font-bold tracking-tight m-0"
               style={{ color: 'var(--accent-bright)', fontFamily: 'Georgia, serif' }}
             >
-              MiniHarvey
+              Vidhi
             </h1>
             <p className="text-[10px] m-0" style={{ color: 'var(--text-muted)' }}>
-              Research Workbench · Indian Legal AI
+              Indian Legal Workbench · for working advocates
             </p>
           </div>
         </div>
