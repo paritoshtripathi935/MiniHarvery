@@ -32,9 +32,40 @@ class Settings(BaseSettings):
     RATE_LIMIT_CALLS_PER_MIN: int = 30
     MAX_SEARCH_RESULTS: int = 10
 
+    # Neon Postgres. Empty string ⇒ in-memory fallback (offline dev).
+    # DATABASE_URL is the pooled connection (PgBouncer) for the running app.
+    # DATABASE_URL_UNPOOLED is the direct connection for Alembic migrations.
+    DATABASE_URL: str = ""
+    DATABASE_URL_UNPOOLED: str = ""
+    DB_POOL_SIZE: int = 5
+    DB_POOL_OVERFLOW: int = 10
+    IS_DB_ECHO_LOG: bool = False
+
     @property
     def allowed_origins_list(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
+
+    @property
+    def db_enabled(self) -> bool:
+        return bool(self.DATABASE_URL)
+
+    @property
+    def async_database_url(self) -> str:
+        """SQLAlchemy async URL — swaps the postgresql:// driver for asyncpg."""
+        url = self.DATABASE_URL
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        # asyncpg doesn't understand libpq query params — strip the ones
+        # Neon adds (sslmode, channel_binding). SSL is enabled separately
+        # via connect_args={"ssl": True} when we build the engine.
+        if "?" in url:
+            url = url.split("?", 1)[0]
+        return url
+
+    @property
+    def sync_database_url(self) -> str:
+        """Sync URL for Alembic — uses psycopg2-style driver."""
+        return self.DATABASE_URL_UNPOOLED or self.DATABASE_URL
 
     class Config:
         env_file = ".env"
