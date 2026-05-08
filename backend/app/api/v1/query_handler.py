@@ -1,12 +1,12 @@
 """
-Query handler — FastAPI router with three endpoints.
+Query handler — search + streaming answer.
 
-POST /search/{session_id}    — run legal search and persist
+POST /search/{session_id}    — run legal search, persist, return thread_id + query_id
 POST /answer/{session_id}    — stream Harvey's legal answer via SSE
-DELETE /session/{session_id} — clear session state
+DELETE /session/{session_id} — drop a single session (rarely used now that
+                               threads carry the user-facing history)
 
-Every endpoint requires a valid Clerk session JWT (Authorization: Bearer …)
-and a configured Postgres database. There is no guest path.
+Every endpoint requires a valid Clerk session JWT; there is no guest path.
 """
 import hashlib
 import json
@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import CallerIdentity, resolve_caller
 from app.db import AsyncSessionLocal, db_enabled
 from app.db import repositories as repo
-from app.models.query_model import SearchRequest
+from app.models.query_model import AnswerRequest, SearchRequest
 from app.services.legal_search_service import search_legal_sources, search_videos
 from app.services.language_model import generate_legal_answer, rewrite_query_for_search
 from app.services.query_classifier import classify_query
@@ -61,7 +61,7 @@ async def search(
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    logger.info("Search [session=%s] query='%s'", session_id, query)
+    logger.info("Search [session=%s thread=%s] query='%s'", session_id, body.thread_id, query)
 
     query_type = classify_query(query)
     search_query = rewrite_query_for_search(query)
@@ -78,9 +78,26 @@ async def search(
     async with AsyncSessionLocal() as db:
         try:
             await repo.upsert_session(db, sess_uuid, caller.user_id)
+
+            # Resolve the thread: either the one the client sent (must belong
+            # to this user) or a fresh thread titled from the first query.
+            if body.thread_id is not None:
+                if not await repo.thread_belongs_to_user(
+                    db, thread_id=body.thread_id, user_id=caller.user_id
+                ):
+                    raise HTTPException(status_code=404, detail="Thread not found")
+                thread_id = body.thread_id
+                await repo.bump_thread(db, thread_id)
+            else:
+                thread = await repo.create_thread(
+                    db, user_id=caller.user_id, title=repo._derive_title(query)
+                )
+                thread_id = thread.id
+
             q = await repo.insert_query(
                 db,
                 session_id=sess_uuid,
+                thread_id=thread_id,
                 user_id=caller.user_id,
                 raw_query=query,
                 rewritten_query=search_query,
@@ -91,6 +108,9 @@ async def search(
             await repo.bulk_insert_search_results(db, q.id, results)
             await repo.bulk_insert_videos(db, q.id, videos)
             await db.commit()
+        except HTTPException:
+            await db.rollback()
+            raise
         except Exception:
             await db.rollback()
             logger.exception("DB persist failed for /search")
@@ -98,6 +118,8 @@ async def search(
 
     return {
         "data": {
+            "thread_id": str(thread_id),
+            "query_id": str(q.id),
             "results": [r.model_dump() for r in results],
             "videos": [v.model_dump() for v in videos],
             "query_type": query_type.value,
@@ -113,7 +135,7 @@ async def search(
 @router.post("/answer/{session_id}")
 async def answer(
     session_id: str,
-    body: SearchRequest,
+    body: AnswerRequest,
     caller: CallerIdentity = Depends(resolve_caller),
 ) -> StreamingResponse:
     check_rate_limit("answer", caller.subject)
@@ -125,17 +147,51 @@ async def answer(
     sess_uuid = _coerce_session_uuid(session_id)
     user_id = caller.user_id
 
-    # Resolve / create the query row up-front so the streaming generator just
-    # has an answer_id to update. We hold the prep session open only briefly.
+    # Resolve which query this answer is for. Three paths in order of preference:
+    #   1. Client passed query_id → use it (with ownership check).
+    #   2. Client passed thread_id → use the latest query in that thread.
+    #   3. Fall back to inserting a new ad-hoc query in a fresh thread.
     async with AsyncSessionLocal() as db:
         await repo.upsert_session(db, sess_uuid, user_id)
-        latest_q = await repo.latest_query_for_session(db, sess_uuid)
+
+        latest_q = None
+        if body.query_id is not None:
+            latest_q = await repo.get_query_owned_by(
+                db, query_id=body.query_id, user_id=user_id
+            )
+            if latest_q is None:
+                raise HTTPException(status_code=404, detail="Query not found")
+
+        if latest_q is None and body.thread_id is not None:
+            if not await repo.thread_belongs_to_user(
+                db, thread_id=body.thread_id, user_id=user_id
+            ):
+                raise HTTPException(status_code=404, detail="Thread not found")
+            previous_in_thread = await repo.previous_queries_for_thread(
+                db, body.thread_id, limit=1
+            )
+            if previous_in_thread:
+                # Pick the actual latest query row in this thread.
+                from sqlalchemy import select  # local import — only used here
+                from app.db import models
+                latest_q = (await db.execute(
+                    select(models.Query)
+                    .where(models.Query.thread_id == body.thread_id)
+                    .where(models.Query.deleted_at.is_(None))
+                    .order_by(models.Query.created_at.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
+
         if latest_q is None:
-            # /answer called without prior /search — insert an ad-hoc query
+            # /answer with no /search history at all — make a thread + query
             # so the FK chain stays intact and the row shows up in history.
+            thread = await repo.create_thread(
+                db, user_id=user_id, title=repo._derive_title(query)
+            )
             latest_q = await repo.insert_query(
                 db,
                 session_id=sess_uuid,
+                thread_id=thread.id,
                 user_id=user_id,
                 raw_query=query,
                 rewritten_query=None,
@@ -143,20 +199,21 @@ async def answer(
                 result_count=0,
                 search_latency_ms=None,
             )
-            search_results = []
-            previous_queries = [query]
-            query_type = "general"
-        else:
-            search_results = await repo.search_results_for_query(db, latest_q.id)
-            previous_queries = await repo.previous_queries_for_session(db, sess_uuid, limit=3)
-            query_type = latest_q.query_type
-        pending = await repo.create_pending_answer(db, query_id=latest_q.id, model=_LLM_MODEL)
+
+        search_results = await repo.search_results_for_query(db, latest_q.id)
+        previous_queries = await repo.previous_queries_for_thread(
+            db, latest_q.thread_id, limit=3
+        )
+        query_type = latest_q.query_type
+        pending = await repo.create_pending_answer(
+            db, query_id=latest_q.id, model=_LLM_MODEL
+        )
         answer_id = pending.id
         await db.commit()
 
     logger.info(
-        "Answer [session=%s] query='%s' results=%d",
-        session_id, query, len(search_results),
+        "Answer [thread=%s query=%s] '%s' results=%d",
+        latest_q.thread_id, latest_q.id, query, len(search_results),
     )
 
     async def event_stream():
@@ -196,6 +253,8 @@ async def answer(
                 "data: "
                 + json.dumps({
                     "done": True,
+                    "thread_id": str(latest_q.thread_id),
+                    "query_id": str(latest_q.id),
                     "citations": citations,
                     "suggested_steps": suggested_steps,
                 })
@@ -203,7 +262,7 @@ async def answer(
             )
 
         except Exception as exc:
-            logger.error("Streaming error [session=%s]: %s", session_id, exc)
+            logger.error("Streaming error: %s", exc)
             async with AsyncSessionLocal() as db2:
                 try:
                     await repo.mark_answer_failed(db2, answer_id=answer_id, error=str(exc))
@@ -221,11 +280,11 @@ async def answer(
 
 # ── DELETE /session/{session_id} ─────────────────────────────────────────────
 
-@router.delete("/session/{session_id}")
+@router.delete("/session/{session_id}", status_code=204)
 async def clear_session(
     session_id: str,
     caller: CallerIdentity = Depends(resolve_caller),  # noqa: ARG001 — auth gate only
-) -> Dict[str, Any]:
+) -> None:
     sess_uuid = _coerce_session_uuid(session_id)
     async with AsyncSessionLocal() as db:
         try:
@@ -233,9 +292,8 @@ async def clear_session(
             await db.commit()
         except Exception:
             await db.rollback()
-            logger.exception("Failed to delete session in DB")
+            logger.exception("Failed to delete session")
             raise HTTPException(status_code=500, detail="Failed to clear session")
-    return {"data": None, "status": "success", "message": "Session cleared"}
 
 
 # ── GET /health ───────────────────────────────────────────────────────────────

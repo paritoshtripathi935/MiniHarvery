@@ -97,6 +97,33 @@ class Session(Base):
     )
 
 
+# ── threads ─────────────────────────────────────────────────────────────────
+class Thread(Base):
+    __tablename__ = "threads"
+    __table_args__ = (
+        Index(
+            "threads_user_recent_idx",
+            "user_id", "updated_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+
+
 # ── queries ─────────────────────────────────────────────────────────────────
 class Query(Base):
     __tablename__ = "queries"
@@ -107,6 +134,7 @@ class Query(Base):
             postgresql_where=text("deleted_at IS NULL"),
         ),
         Index("queries_session_idx", "session_id", "created_at"),
+        Index("queries_thread_idx", "thread_id", "created_at"),
         Index(
             "queries_raw_query_fts_idx",
             text("to_tsvector('english', raw_query)"),
@@ -119,6 +147,9 @@ class Query(Base):
     )
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("threads.id", ondelete="CASCADE"), nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
