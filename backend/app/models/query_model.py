@@ -17,11 +17,13 @@ class QueryRequest(BaseModel):
 class SearchRequest(BaseModel):
     """Request body for /search.
 
-    `thread_id` is optional — when missing the server creates a new thread
-    titled from the first query. When provided, the query is appended to
-    that thread (server verifies it belongs to the caller)."""
+    `thread_id` — when present, append to that thread (server verifies
+        ownership). When absent, mint a new thread inside `matter_id`.
+    `matter_id` — only consulted when minting a new thread; defaults to
+        the caller's Inbox matter."""
     query: str
     thread_id: Optional[UUID] = None
+    matter_id: Optional[UUID] = None
 
 
 class AnswerRequest(BaseModel):

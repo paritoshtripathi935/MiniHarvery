@@ -1,7 +1,7 @@
 /**
  * Split-screen sign-in page.
  * Left 60%: cinematic slideshow of landmark Indian courts / cases.
- * Right 40%: Clerk sign-in card with MiniHarvey brand.
+ * Right 40%: Clerk sign-in card with Vidhi brand.
  *
  * Images are hotlinked from Wikimedia Commons (CC BY-SA 4.0).
  */
@@ -203,7 +203,7 @@ export default function LoginPage() {
             className="text-sm font-semibold tracking-widest uppercase"
             style={{ color: '#f0c040', letterSpacing: '0.2em' }}
           >
-            MiniHarvey
+            Vidhi
           </span>
         </div>
 
@@ -430,7 +430,7 @@ export default function LoginPage() {
               fontFamily: 'Georgia, "Times New Roman", serif',
             }}
           >
-            MiniHarvey
+            Vidhi
           </h1>
           <div
             className="w-12 h-px my-3"
@@ -485,7 +485,7 @@ export default function LoginPage() {
             className="text-xs text-center mt-8 max-w-sm leading-relaxed"
             style={{ color: '#6b7280' }}
           >
-            ⚖️ MiniHarvey provides legal information only — not legal advice.
+            ⚖️ Vidhi provides legal information only — not legal advice.
             For your specific situation, consult a qualified advocate registered
             with the <span style={{ color: '#d4a017' }}>Bar Council of India</span>.
           </p>

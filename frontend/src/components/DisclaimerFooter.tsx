@@ -15,7 +15,7 @@ export default function DisclaimerFooter() {
     >
       {/* Left — legal disclaimer */}
       <p className="m-0 flex-1 min-w-0 truncate sm:whitespace-normal">
-        ⚖️ MiniHarvey provides legal information only — not legal advice. For
+        ⚖️ Vidhi provides legal information only — not legal advice. For
         your specific situation, consult a qualified advocate registered with
         the{' '}
         <span style={{ color: 'var(--accent)' }}>Bar Council of India</span>.

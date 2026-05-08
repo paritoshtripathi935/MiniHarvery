@@ -80,7 +80,8 @@ async def search(
             await repo.upsert_session(db, sess_uuid, caller.user_id)
 
             # Resolve the thread: either the one the client sent (must belong
-            # to this user) or a fresh thread titled from the first query.
+            # to this user) or a fresh thread titled from the first query
+            # inside the requested matter (or the user's Inbox).
             if body.thread_id is not None:
                 if not await repo.thread_belongs_to_user(
                     db, thread_id=body.thread_id, user_id=caller.user_id
@@ -89,8 +90,17 @@ async def search(
                 thread_id = body.thread_id
                 await repo.bump_thread(db, thread_id)
             else:
+                target_matter_id = body.matter_id or caller.inbox_matter_id
+                if body.matter_id is not None:
+                    if not await repo.matter_belongs_to_user(
+                        db, matter_id=body.matter_id, user_id=caller.user_id
+                    ):
+                        raise HTTPException(status_code=404, detail="Matter not found")
                 thread = await repo.create_thread(
-                    db, user_id=caller.user_id, title=repo._derive_title(query)
+                    db,
+                    user_id=caller.user_id,
+                    matter_id=target_matter_id,
+                    title=repo._derive_title(query),
                 )
                 thread_id = thread.id
 
@@ -186,7 +196,10 @@ async def answer(
             # /answer with no /search history at all — make a thread + query
             # so the FK chain stays intact and the row shows up in history.
             thread = await repo.create_thread(
-                db, user_id=user_id, title=repo._derive_title(query)
+                db,
+                user_id=user_id,
+                matter_id=caller.inbox_matter_id,
+                title=repo._derive_title(query),
             )
             latest_q = await repo.insert_query(
                 db,

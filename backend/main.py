@@ -1,5 +1,5 @@
 """
-MiniHarvey backend — FastAPI entry point.
+Vidhi backend — FastAPI entry point.
 Structure mirrors MiniPerplexity's main.py.
 """
 import logging
@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.settings import settings
+from app.api.v1.document_handler import router as document_router
+from app.api.v1.matter_handler import router as matter_router
 from app.api.v1.query_handler import router as query_router
 from app.api.v1.thread_handler import router as thread_router
 
@@ -18,8 +20,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="MiniHarvey",
-    description="Indian Legal AI Research Assistant",
+    title="Vidhi",
+    description="Indian legal research workbench — for working advocates.",
     version="1.0.0",
     docs_url="/docs" if settings.ENV == "dev" else None,
     redoc_url="/redoc" if settings.ENV == "dev" else None,
@@ -36,6 +38,8 @@ app.add_middleware(
 
 app.include_router(query_router, prefix="/api/v1")
 app.include_router(thread_router, prefix="/api/v1")
+app.include_router(matter_router, prefix="/api/v1")
+app.include_router(document_router, prefix="/api/v1")
 
 
 @app.get("/health")
@@ -45,5 +49,5 @@ async def health():
 
 @app.on_event("startup")
 async def startup():
-    logger.info("MiniHarvey starting — ENV=%s", settings.ENV)
+    logger.info("Vidhi starting — ENV=%s", settings.ENV)
     logger.info("Allowed origins: %s", settings.allowed_origins_list)

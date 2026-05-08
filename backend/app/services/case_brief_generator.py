@@ -1,0 +1,175 @@
+"""Case Brief Generator — turns a judgment URL or pasted text into a
+structured brief: facts, issues, arguments, ratio, holding, dicta.
+
+Architecture:
+- `generate_case_brief(text)` is the LLM call. Pure function, no DB.
+- `fetch_case_text(url)` reuses the existing content_extractor with a
+  larger char budget than search snippets.
+- The handler in document_handler stitches these together and persists
+  the result as a Document of type='case_brief'.
+
+The prompt is crafted to (a) refuse to invent citations/facts and (b)
+return strict JSON we can store + render. Every field is a list of strings
+so the FE can render bullet points without re-parsing prose.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+from typing import Optional, TypedDict
+
+import requests
+
+from app.core.settings import settings
+from app.services.content_extractor import fetch_content_from_url
+
+logger = logging.getLogger(__name__)
+
+_CF_URL = (
+    "https://api.cloudflare.com/client/v4/accounts/{account_id}"
+    "/ai/run/@cf/meta/llama-3.1-70b-instruct"
+)
+
+# Larger budget than search snippets — judgments are long and we want the
+# LLM to see facts AND ratio, which often live many paragraphs apart.
+_FETCH_CHAR_BUDGET = 18_000
+
+
+class CaseBrief(TypedDict):
+    citation: Optional[str]
+    facts: list[str]
+    issues: list[str]
+    arguments_petitioner: list[str]
+    arguments_respondent: list[str]
+    ratio: list[str]
+    holding: list[str]
+    dicta: list[str]
+    source_url: Optional[str]
+
+
+_SYSTEM_PROMPT = """You are a senior legal research assistant generating a structured CASE BRIEF
+from an Indian judgment. You MUST output a single JSON object — no prose, no
+markdown, no commentary. NEVER invent citations, parties, or facts that are
+not in the source text. If a section is genuinely absent from the source,
+return an empty array for that field.
+
+The shape of your reply MUST be exactly:
+{
+  "citation": string | null,         // e.g. "AIR 2023 SC 1234" — null if not found
+  "facts": string[],                 // 3-7 bullet points of material facts
+  "issues": string[],                // legal questions before the court
+  "arguments_petitioner": string[],  // appellant/petitioner contentions
+  "arguments_respondent": string[],  // respondent/state contentions
+  "ratio": string[],                 // ratio decidendi — the binding rule
+  "holding": string[],               // the disposal (allowed/dismissed/remitted/...)
+  "dicta": string[]                  // obiter that's analytically important; [] if none
+}
+"""
+
+_USER_TEMPLATE = """Generate a case brief from the following Indian judgment text. Return ONLY
+the JSON object specified in the system prompt — nothing else.
+
+Source URL: {url}
+
+--- BEGIN JUDGMENT TEXT ---
+{text}
+--- END JUDGMENT TEXT ---
+"""
+
+
+def fetch_case_text(url: str) -> str:
+    """Pull the judgment text. Returns empty string on failure — caller
+    should refuse rather than feed empty text to the LLM."""
+    return fetch_content_from_url(url, max_chars=_FETCH_CHAR_BUDGET) or ""
+
+
+def _extract_json(text: str) -> dict:
+    """LLMs occasionally wrap JSON in ```json fences or include a stray
+    sentence. Strip both before parsing."""
+    text = text.strip()
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1)
+    else:
+        first = text.find("{")
+        last = text.rfind("}")
+        if first != -1 and last != -1 and last > first:
+            text = text[first:last + 1]
+    return json.loads(text)
+
+
+def _empty_brief(source_url: Optional[str]) -> CaseBrief:
+    return CaseBrief(
+        citation=None,
+        facts=[], issues=[],
+        arguments_petitioner=[], arguments_respondent=[],
+        ratio=[], holding=[], dicta=[],
+        source_url=source_url,
+    )
+
+
+def generate_case_brief(
+    text: str, *, source_url: Optional[str] = None
+) -> CaseBrief:
+    """Call Cloudflare AI with the structured prompt and return a CaseBrief.
+    Raises ValueError on missing config or unparsable response."""
+    if not settings.CLOUDFLARE_ACCOUNT_ID or not settings.CLOUDFLARE_API_TOKEN:
+        raise ValueError("Cloudflare AI credentials are not configured")
+    text = text.strip()
+    if not text:
+        raise ValueError("Cannot generate a brief from empty text")
+
+    url = _CF_URL.format(account_id=settings.CLOUDFLARE_ACCOUNT_ID)
+    payload = {
+        "messages": [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": _USER_TEMPLATE.format(
+                url=source_url or "(none provided)",
+                text=text[:_FETCH_CHAR_BUDGET],
+            )},
+        ],
+        "max_tokens": 1500,
+        # Low temperature: brief generation is extractive, not creative.
+        "temperature": 0.2,
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    resp.raise_for_status()
+    body = resp.json()
+    if not body.get("success"):
+        raise ValueError(f"Cloudflare AI error: {body.get('errors')}")
+    raw = body["result"]["response"]
+
+    try:
+        parsed = _extract_json(raw)
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.warning("Brief LLM returned non-JSON: %s — raw=%r", exc, raw[:200])
+        # Don't crash the request; return an empty brief shell so the user
+        # at least gets the document scaffold and the source URL.
+        return _empty_brief(source_url)
+
+    return CaseBrief(
+        citation=parsed.get("citation") or None,
+        facts=list(parsed.get("facts") or []),
+        issues=list(parsed.get("issues") or []),
+        arguments_petitioner=list(parsed.get("arguments_petitioner") or []),
+        arguments_respondent=list(parsed.get("arguments_respondent") or []),
+        ratio=list(parsed.get("ratio") or []),
+        holding=list(parsed.get("holding") or []),
+        dicta=list(parsed.get("dicta") or []),
+        source_url=source_url,
+    )
+
+
+def derive_brief_title(brief: CaseBrief, fallback: str = "Case brief") -> str:
+    """Pick a sensible title for the saved Document. Citation > first issue > fallback."""
+    if brief["citation"]:
+        return brief["citation"]
+    if brief["issues"]:
+        first = brief["issues"][0].strip()
+        return first[:80] if first else fallback
+    return fallback

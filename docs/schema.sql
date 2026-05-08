@@ -1,4 +1,4 @@
--- MiniHarvey — initial schema
+-- Vidhi — initial schema
 -- Target: Neon Postgres 16+
 -- Companion doc: docs/database-design.md
 --
@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS users (
     clerk_user_id   text,
     email           citext,
     display_name    text,
+    -- Vidhi user segment — defaults to 'associate'; gates feature surface later.
+    mode            text        NOT NULL DEFAULT 'associate'
+        CHECK (mode IN ('associate', 'solo', 'student')),
+    firm_name       text,
+    bar_council_id  text,
     created_at      timestamptz NOT NULL DEFAULT now(),
     last_seen_at    timestamptz NOT NULL DEFAULT now(),
     deleted_at      timestamptz
@@ -73,11 +78,39 @@ CREATE INDEX IF NOT EXISTS sessions_expires_at_idx
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- threads — user-facing conversation grouping
+-- matters — the user-facing case file (a Vidhi v2 concept)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS matters (
+    id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title         text        NOT NULL,
+    description   text,
+    parties       jsonb       NOT NULL DEFAULT '[]'::jsonb,
+    court         text,
+    cause_number  text,
+    status        text        NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'closed', 'archived')),
+    -- Per-user 'Inbox' matter is auto-created on first login. Partial unique
+    -- index below enforces at most one such row per user.
+    is_inbox      boolean     NOT NULL DEFAULT false,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    deleted_at    timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS matters_user_recent_idx
+    ON matters (user_id, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS matters_user_inbox_uq
+    ON matters (user_id) WHERE is_inbox = true AND deleted_at IS NULL;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- threads — research scratchpads inside a matter
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS threads (
     id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id     uuid        NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    matter_id   uuid        NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
     title       text,
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now(),
@@ -86,6 +119,8 @@ CREATE TABLE IF NOT EXISTS threads (
 
 CREATE INDEX IF NOT EXISTS threads_user_recent_idx
     ON threads (user_id, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS threads_matter_recent_idx
+    ON threads (matter_id, updated_at DESC) WHERE deleted_at IS NULL;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -116,23 +151,30 @@ CREATE INDEX IF NOT EXISTS queries_raw_query_fts_idx
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- documents (cache; phase 2 — created now so FKs are stable)
+-- documents — case briefs / drafts / authorities tables / notes
+-- Polymorphic via `type`; `content` is a type-specific JSONB blob.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS documents (
-    id                uuid           PRIMARY KEY DEFAULT gen_random_uuid(),
-    url               text           NOT NULL UNIQUE,
-    source            source_enum    NOT NULL,
-    doc_type          doc_type_enum  NOT NULL,
-    title             text,
-    citation          text,
-    jurisdiction      text,
-    year              smallint,
-    content           text,
-    content_hash      bytea,
-    first_fetched_at  timestamptz    NOT NULL DEFAULT now(),
-    last_fetched_at   timestamptz    NOT NULL DEFAULT now(),
-    fetch_count       integer        NOT NULL DEFAULT 1
+    id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    matter_id        uuid        NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+    user_id          uuid        NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    type             text        NOT NULL
+        CHECK (type IN ('case_brief', 'pleading_draft', 'authorities_table', 'note')),
+    title            text        NOT NULL,
+    content          jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    source_url       text,
+    source_query_id  uuid        REFERENCES queries(id) ON DELETE SET NULL,
+    status           text        NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'final')),
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+    deleted_at       timestamptz
 );
+
+CREATE INDEX IF NOT EXISTS documents_matter_recent_idx
+    ON documents (matter_id, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS documents_user_type_idx
+    ON documents (user_id, type) WHERE deleted_at IS NULL;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -141,7 +183,6 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE TABLE IF NOT EXISTS search_results (
     id              uuid           PRIMARY KEY DEFAULT gen_random_uuid(),
     query_id        uuid           NOT NULL REFERENCES queries(id)   ON DELETE CASCADE,
-    document_id     uuid           REFERENCES documents(id)          ON DELETE SET NULL,
     rank            smallint       NOT NULL,
     source          source_enum    NOT NULL,
     doc_type        doc_type_enum  NOT NULL,

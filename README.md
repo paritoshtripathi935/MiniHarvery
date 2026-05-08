@@ -1,7 +1,9 @@
-# MiniHarvey
+# Vidhi
 
-**An AI research workbench for Indian law.**
-Ask a question, get a structured legal brief — *Issue · Governing Law · Authorities · Discussion · Conclusion · Recommended Actions* — backed by live citations from Indian Kanoon, India Code, and curated web sources.
+**Indian legal research workbench — for working advocates.**
+Matters, briefs, and authorities in one place. Ask a question, get a structured legal brief — *Issue · Governing Law · Authorities · Discussion · Conclusion · Recommended Actions* — backed by live citations from Indian Kanoon, India Code, and curated web sources.
+
+> Formerly MiniHarvey. Domain and deploy URLs are mid-migration — links below still resolve.
 
 ### 🔗 [**Try the live demo →**](https://mini-harvey.netlify.app/)
 
@@ -14,13 +16,13 @@ Ask a question, get a structured legal brief — *Issue · Governing Law · Auth
 [![React 18](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=black)](https://react.dev/)
 [![Cloudflare AI](https://img.shields.io/badge/Cloudflare-LLaMA%203.1%2070B-f38020?logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/workers-ai/)
 
-> ⚠️ **Legal information, not legal advice.** MiniHarvey is under active development. For your matter, consult an advocate registered with the Bar Council of India.
+> ⚠️ **Legal information, not legal advice.** Vidhi is under active development. For your matter, consult an advocate registered with the Bar Council of India.
 
 ---
 
 ## What it does
 
-MiniHarvey turns a plain-English legal question (*"What are my rights if arrested without a warrant?"*) into a memo-style answer with:
+Vidhi turns a plain-English legal question (*"What are my rights if arrested without a warrant?"*) into a memo-style answer with:
 
 - **Query rewriting** — your natural-language question is rewritten into a keyword-dense search query before hitting the providers.
 - **Parallel search** across **Indian Kanoon** (case law), **India Code** (statutes/acts), and **Google CSE** (curated Indian legal web).
@@ -40,13 +42,13 @@ Inspired by [MiniPerplexity](https://github.com/paritoshtripathi935/MiniPerplexi
 
 ### Sign-in — cinematic landmark-case slideshow
 
-![MiniHarvey sign-in page](./assets/login.png)
+![Vidhi sign-in page](./assets/login.png)
 
 A split-screen login: on the left, a rotating slideshow of landmark Indian cases (Kesavananda Bharati, Maneka Gandhi, Vishaka, Puttaswamy, Navtej Singh Johar) layered over Wikimedia imagery of the Supreme Court; on the right, a Clerk sign-in card styled in chambers navy + gold, with a "Continue as guest" escape hatch and the सत्यमेव जयते motto.
 
 ### Workbench — three-pane research layout
 
-![MiniHarvey workbench with an active brief](./assets/workbench.png)
+![Vidhi workbench with an active brief](./assets/workbench.png)
 
 The three-pane research surface in action. A corporate-merger query streams back a structured brief — **Issue → Governing Law → Authorities → Discussion** — with the Threads rail on the left, Sources + Explainer Videos on the right, and the composer docked beneath the brief for follow-ups.
 
@@ -172,7 +174,7 @@ The Supreme Court of India's own portal (`main.sci.gov.in`) was pulled from the 
 ## Project layout
 
 ```
-MiniHarvey/
+vidhi/
 ├── backend/
 │   ├── main.py                         # FastAPI entry, CORS, router mount
 │   ├── requirements.txt

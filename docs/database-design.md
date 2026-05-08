@@ -1,4 +1,4 @@
-# MiniHarvey — Database Design (Neon Postgres)
+# Vidhi — Database Design (Neon Postgres)
 
 > Status: **Draft v1** · Branch: `feat/neon-database` · Author: Paritosh
 > Database: **Neon** (serverless Postgres, branchable, with `pgcrypto` + `pgvector` available)
@@ -7,7 +7,7 @@
 
 ## 1. Why a database, why now
 
-Today MiniHarvey keeps everything in memory:
+Today Vidhi keeps everything in memory:
 
 | Concern | Today | Problem |
 |---|---|---|
@@ -336,7 +336,7 @@ Legal queries can be sensitive (someone researching their own case). Decisions:
 
 ## 8. What this design deliberately does *not* do
 
-- **No multi-tenancy / orgs.** MiniHarvey is a single-user product today; adding `org_id` everywhere now is premature.
+- **No multi-tenancy / orgs.** Vidhi is a single-user product today; adding `org_id` everywhere now is premature.
 - **No event-sourcing or audit log table.** `created_at` + immutability of the core tables is enough; bring in an audit log when there's a compliance ask.
 - **No materialized views.** The history view is fast enough on a btree index. Revisit if a dashboard needs ~50ms aggregates.
 - **No `pgvector` columns yet** — extension is enabled, columns aren't created. Adds cost (storage + index build) we don't need until we ship semantic search.
