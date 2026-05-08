@@ -10,11 +10,11 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     ForeignKey,
     Index,
     Integer,
-    LargeBinary,
     SmallInteger,
     Text,
     UniqueConstraint,
@@ -64,6 +64,11 @@ class User(Base):
     clerk_user_id: Mapped[Optional[str]] = mapped_column(Text)
     email: Mapped[Optional[str]] = mapped_column(CITEXT)
     display_name: Mapped[Optional[str]] = mapped_column(Text)
+    mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'associate'")
+    )
+    firm_name: Mapped[Optional[str]] = mapped_column(Text)
+    bar_council_id: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -106,6 +111,11 @@ class Thread(Base):
             "user_id", "updated_at",
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        Index(
+            "threads_matter_recent_idx",
+            "matter_id", "updated_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -113,6 +123,9 @@ class Thread(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matters.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -165,29 +178,101 @@ class Query(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
 
 
-# ── documents ───────────────────────────────────────────────────────────────
-class Document(Base):
-    __tablename__ = "documents"
+# ── matters ─────────────────────────────────────────────────────────────────
+class Matter(Base):
+    __tablename__ = "matters"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'closed', 'archived')",
+            name="matters_status_check",
+        ),
+        Index(
+            "matters_user_recent_idx",
+            "user_id", "updated_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "matters_user_inbox_uq",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_inbox = true AND deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
-    url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    source: Mapped[str] = mapped_column(SourceEnum, nullable=False)
-    doc_type: Mapped[str] = mapped_column(DocTypeEnum, nullable=False)
-    title: Mapped[Optional[str]] = mapped_column(Text)
-    citation: Mapped[Optional[str]] = mapped_column(Text)
-    jurisdiction: Mapped[Optional[str]] = mapped_column(Text)
-    year: Mapped[Optional[int]] = mapped_column(SmallInteger)
-    content: Mapped[Optional[str]] = mapped_column(Text)
-    content_hash: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
-    first_fetched_at: Mapped[datetime] = mapped_column(
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    parties: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    court: Mapped[Optional[str]] = mapped_column(Text)
+    cause_number: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
+    is_inbox: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
-    last_fetched_at: Mapped[datetime] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
-    fetch_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
+
+
+# ── documents (case briefs, drafts, notes — polymorphic via `type`) ─────────
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('case_brief', 'pleading_draft', 'authorities_table', 'note')",
+            name="documents_type_check",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'final')",
+            name="documents_status_check",
+        ),
+        Index(
+            "documents_matter_recent_idx",
+            "matter_id", "updated_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "documents_user_type_idx",
+            "user_id", "type",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matters.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    source_url: Mapped[Optional[str]] = mapped_column(Text)
+    source_query_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("queries.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'draft'"))
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))
 
 
 # ── search_results ──────────────────────────────────────────────────────────
@@ -208,9 +293,6 @@ class SearchResult(Base):
     )
     query_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("queries.id", ondelete="CASCADE"), nullable=False
-    )
-    document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL")
     )
     rank: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     source: Mapped[str] = mapped_column(SourceEnum, nullable=False)
