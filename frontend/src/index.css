@@ -62,11 +62,27 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+  /* Inter for UI chrome (default). Content surfaces (matter titles,
+     case briefs, drafts) explicitly opt into Source Serif 4. */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';  /* Inter's better digit + 'a' */
   background-color: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background-color 180ms ease, color 180ms ease;
+}
+
+/* Heading + brand surfaces opt into the serif. Apply via class
+   (rather than h1/h2 globally) so we keep precise control. */
+.serif {
+  font-family: 'Source Serif 4', 'Source Serif Pro', Georgia, 'Times New Roman', serif;
+  font-feature-settings: 'liga', 'kern';
+}
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-ligatures: none;
 }
 
 #root {
