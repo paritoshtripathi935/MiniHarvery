@@ -73,11 +73,28 @@ CREATE INDEX IF NOT EXISTS sessions_expires_at_idx
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- threads — user-facing conversation grouping
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS threads (
+    id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     uuid        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       text,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    deleted_at  timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS threads_user_recent_idx
+    ON threads (user_id, updated_at DESC) WHERE deleted_at IS NULL;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- queries
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS queries (
     id                 uuid             PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id         uuid             NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    thread_id          uuid             NOT NULL REFERENCES threads(id)  ON DELETE CASCADE,
     user_id            uuid             NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
     raw_query          text             NOT NULL,
     rewritten_query    text,
@@ -92,6 +109,8 @@ CREATE INDEX IF NOT EXISTS queries_user_history_idx
     ON queries (user_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS queries_session_idx
     ON queries (session_id, created_at);
+CREATE INDEX IF NOT EXISTS queries_thread_idx
+    ON queries (thread_id, created_at);
 CREATE INDEX IF NOT EXISTS queries_raw_query_fts_idx
     ON queries USING gin (to_tsvector('english', raw_query));
 

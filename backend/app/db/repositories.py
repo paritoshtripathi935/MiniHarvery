@@ -100,12 +100,114 @@ async def evict_expired_sessions(db: AsyncSession) -> int:
     return result.rowcount or 0
 
 
+# ── Threads ─────────────────────────────────────────────────────────────────
+
+def _derive_title(raw_query: str, max_chars: int = 80) -> str:
+    title = raw_query.strip().splitlines()[0] if raw_query.strip() else "Untitled"
+    return title[:max_chars]
+
+
+async def create_thread(
+    db: AsyncSession, *, user_id: uuid.UUID, title: str
+) -> models.Thread:
+    thread = models.Thread(user_id=user_id, title=title)
+    db.add(thread)
+    await db.flush()
+    return thread
+
+
+async def thread_belongs_to_user(
+    db: AsyncSession, *, thread_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    stmt = select(models.Thread.id).where(
+        models.Thread.id == thread_id,
+        models.Thread.user_id == user_id,
+        models.Thread.deleted_at.is_(None),
+    )
+    return (await db.execute(stmt)).scalar_one_or_none() is not None
+
+
+async def bump_thread(db: AsyncSession, thread_id: uuid.UUID) -> None:
+    await db.execute(
+        update(models.Thread)
+        .where(models.Thread.id == thread_id)
+        .values(updated_at=datetime.now(timezone.utc))
+    )
+
+
+async def list_user_threads(
+    db: AsyncSession, user_id: uuid.UUID, limit: int = 100
+) -> List[dict]:
+    """Sidebar payload — one row per thread, with query count."""
+    from sqlalchemy import func
+    stmt = (
+        select(
+            models.Thread.id,
+            models.Thread.title,
+            models.Thread.created_at,
+            models.Thread.updated_at,
+            func.count(models.Query.id).label("query_count"),
+        )
+        .join(
+            models.Query,
+            (models.Query.thread_id == models.Thread.id)
+            & (models.Query.deleted_at.is_(None)),
+            isouter=True,
+        )
+        .where(models.Thread.user_id == user_id)
+        .where(models.Thread.deleted_at.is_(None))
+        .group_by(models.Thread.id)
+        .order_by(models.Thread.updated_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "id": str(r.id),
+            "title": r.title,
+            "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat(),
+            "query_count": r.query_count,
+        }
+        for r in rows
+    ]
+
+
+async def soft_delete_thread(
+    db: AsyncSession, *, thread_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """Soft-delete a single thread the user owns."""
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(models.Thread)
+        .where(models.Thread.id == thread_id)
+        .where(models.Thread.user_id == user_id)
+        .where(models.Thread.deleted_at.is_(None))
+        .values(deleted_at=now)
+    )
+    return result.rowcount > 0
+
+
+async def soft_delete_all_user_threads(
+    db: AsyncSession, user_id: uuid.UUID
+) -> int:
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(models.Thread)
+        .where(models.Thread.user_id == user_id)
+        .where(models.Thread.deleted_at.is_(None))
+        .values(deleted_at=now)
+    )
+    return result.rowcount or 0
+
+
 # ── Queries ─────────────────────────────────────────────────────────────────
 
 async def insert_query(
     db: AsyncSession,
     *,
     session_id: uuid.UUID,
+    thread_id: uuid.UUID,
     user_id: uuid.UUID,
     raw_query: str,
     rewritten_query: Optional[str],
@@ -115,6 +217,7 @@ async def insert_query(
 ) -> models.Query:
     q = models.Query(
         session_id=session_id,
+        thread_id=thread_id,
         user_id=user_id,
         raw_query=raw_query,
         rewritten_query=rewritten_query,
@@ -127,12 +230,12 @@ async def insert_query(
     return q
 
 
-async def previous_queries_for_session(
-    db: AsyncSession, session_id: uuid.UUID, limit: int = 3
+async def previous_queries_for_thread(
+    db: AsyncSession, thread_id: uuid.UUID, limit: int = 3
 ) -> List[str]:
     stmt = (
         select(models.Query.raw_query)
-        .where(models.Query.session_id == session_id)
+        .where(models.Query.thread_id == thread_id)
         .where(models.Query.deleted_at.is_(None))
         .order_by(models.Query.created_at.desc())
         .limit(limit)
@@ -141,17 +244,156 @@ async def previous_queries_for_session(
     return list(reversed(rows))  # chronological for the LLM prompt
 
 
-async def latest_query_for_session(
-    db: AsyncSession, session_id: uuid.UUID
+async def get_query_owned_by(
+    db: AsyncSession, *, query_id: uuid.UUID, user_id: uuid.UUID
 ) -> Optional[models.Query]:
     stmt = (
         select(models.Query)
-        .where(models.Query.session_id == session_id)
+        .where(models.Query.id == query_id)
+        .where(models.Query.user_id == user_id)
         .where(models.Query.deleted_at.is_(None))
-        .order_by(models.Query.created_at.desc())
-        .limit(1)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def fetch_thread_full(
+    db: AsyncSession, *, thread_id: uuid.UUID, user_id: uuid.UUID
+) -> Optional[dict]:
+    """One nested payload: thread + every query with answer + sources + videos
+    + citations + suggested_steps. Returns None if the thread doesn't belong
+    to the user (or doesn't exist / is soft-deleted)."""
+    thread = (await db.execute(
+        select(models.Thread)
+        .where(models.Thread.id == thread_id)
+        .where(models.Thread.user_id == user_id)
+        .where(models.Thread.deleted_at.is_(None))
+    )).scalar_one_or_none()
+    if thread is None:
+        return None
+
+    queries = (await db.execute(
+        select(models.Query)
+        .where(models.Query.thread_id == thread_id)
+        .where(models.Query.deleted_at.is_(None))
+        .order_by(models.Query.created_at)
+    )).scalars().all()
+    if not queries:
+        return {
+            "id": str(thread.id),
+            "title": thread.title,
+            "created_at": thread.created_at.isoformat(),
+            "updated_at": thread.updated_at.isoformat(),
+            "messages": [],
+        }
+
+    query_ids = [q.id for q in queries]
+    results_by_query = await _group_search_results(db, query_ids)
+    videos_by_query = await _group_videos(db, query_ids)
+    answers_by_query = await _group_answers(db, query_ids)
+
+    messages = []
+    for q in queries:
+        answer = answers_by_query.get(q.id)
+        messages.append({
+            "query_id": str(q.id),
+            "thread_id": str(q.thread_id),
+            "raw_query": q.raw_query,
+            "query_type": q.query_type,
+            "created_at": q.created_at.isoformat(),
+            "search_results": results_by_query.get(q.id, []),
+            "videos": videos_by_query.get(q.id, []),
+            "answer": answer,
+        })
+    return {
+        "id": str(thread.id),
+        "title": thread.title,
+        "created_at": thread.created_at.isoformat(),
+        "updated_at": thread.updated_at.isoformat(),
+        "messages": messages,
+    }
+
+
+async def _group_search_results(
+    db: AsyncSession, query_ids: List[uuid.UUID]
+) -> dict:
+    rows = (await db.execute(
+        select(models.SearchResult)
+        .where(models.SearchResult.query_id.in_(query_ids))
+        .order_by(models.SearchResult.query_id, models.SearchResult.rank)
+    )).scalars().all()
+    grouped: dict = {}
+    for r in rows:
+        grouped.setdefault(r.query_id, []).append({
+            "title": r.title, "url": r.url,
+            "snippet": r.snippet or "",
+            "search_content": r.search_content or "",
+            "source": r.source, "doc_type": r.doc_type,
+            "jurisdiction": r.jurisdiction, "citation": r.citation, "year": r.year,
+            "question": "",
+        })
+    return grouped
+
+
+async def _group_videos(db: AsyncSession, query_ids: List[uuid.UUID]) -> dict:
+    rows = (await db.execute(
+        select(models.Video)
+        .where(models.Video.query_id.in_(query_ids))
+        .order_by(models.Video.query_id, models.Video.rank)
+    )).scalars().all()
+    grouped: dict = {}
+    for v in rows:
+        grouped.setdefault(v.query_id, []).append({
+            "video_id": v.video_id, "title": v.title or "",
+            "channel": v.channel or "", "description": v.description or "",
+            "thumbnail_url": v.thumbnail_url or "", "url": v.url,
+            "published_at": v.published_at.isoformat() if v.published_at else None,
+            "duration": (
+                f"PT{v.duration_seconds}S" if v.duration_seconds else None
+            ),
+        })
+    return grouped
+
+
+async def _group_answers(db: AsyncSession, query_ids: List[uuid.UUID]) -> dict:
+    answers = (await db.execute(
+        select(models.Answer).where(models.Answer.query_id.in_(query_ids))
+    )).scalars().all()
+    if not answers:
+        return {}
+
+    answer_ids = [a.id for a in answers]
+    citations_rows = (await db.execute(
+        select(models.Citation)
+        .where(models.Citation.answer_id.in_(answer_ids))
+    )).scalars().all()
+    steps_rows = (await db.execute(
+        select(models.SuggestedStep)
+        .where(models.SuggestedStep.answer_id.in_(answer_ids))
+        .order_by(models.SuggestedStep.answer_id, models.SuggestedStep.rank)
+    )).scalars().all()
+
+    citations_by_answer: dict = {}
+    for c in citations_rows:
+        citations_by_answer.setdefault(c.answer_id, []).append({
+            "text": c.citation_text,
+            "citation_type": c.citation_type or "",
+            "url": "",
+        })
+    steps_by_answer: dict = {}
+    for s in steps_rows:
+        steps_by_answer.setdefault(s.answer_id, []).append(s.text_)
+
+    grouped: dict = {}
+    for a in answers:
+        grouped[a.query_id] = {
+            "content": a.content,
+            "status": a.status,
+            "model": a.model,
+            "latency_ms": a.latency_ms,
+            "citations": citations_by_answer.get(a.id, []),
+            "suggested_steps": steps_by_answer.get(a.id, []),
+        }
+    return grouped
 
 
 # ── Search results ──────────────────────────────────────────────────────────

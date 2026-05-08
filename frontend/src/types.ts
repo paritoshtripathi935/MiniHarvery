@@ -50,6 +50,16 @@ export interface LegalAnswer {
   query_type: QueryType;
 }
 
+// ── Thread (server history) ───────────────────────────────────────────────
+
+export interface ThreadSummary {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+  query_count: number;
+}
+
 // ── Message (conversation unit) ───────────────────────────────────────────
 
 export interface Message {
