@@ -221,6 +221,7 @@ function AuthenticatedApp() {
         sessionId,
         query,
         serverThreadIdInput,
+        undefined,  // matter_id — wired in the matter-aware UI (next commit)
         user?.id,
         getAuthToken,
       );

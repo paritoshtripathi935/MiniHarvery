@@ -7,8 +7,13 @@
  * requests with 401 — there is no guest path.
  */
 import type {
+  CaseBriefDocument,
   Citation,
+  DocumentRecord,
   LegalSearchResult,
+  MatterDetail,
+  MatterSummary,
+  Party,
   ThreadSummary,
   VideoResult,
 } from '../types';
@@ -45,11 +50,13 @@ export async function performLegalSearch(
   sessionId: string,
   query: string,
   threadId: string | undefined,
+  matterId: string | undefined,
   userId?: string,
   getToken?: GetToken,
 ): Promise<SearchResponse> {
-  const body: { query: string; thread_id?: string } = { query };
+  const body: { query: string; thread_id?: string; matter_id?: string } = { query };
   if (threadId) body.thread_id = threadId;
+  if (matterId) body.matter_id = matterId;
 
   const response = await fetch(`${BASE_URL}/api/v1/search/${sessionId}`, {
     method: 'POST',
@@ -237,4 +244,176 @@ export async function clearSession(
     method: 'DELETE',
     headers: await buildHeaders(userId, getToken),
   });
+}
+
+// ── Matters ──────────────────────────────────────────────────────────────
+
+export async function listMatters(
+  userId?: string,
+  getToken?: GetToken,
+): Promise<MatterSummary[]> {
+  const response = await fetch(`${BASE_URL}/api/v1/matters`, {
+    method: 'GET',
+    headers: await buildHeaders(userId, getToken),
+  });
+  if (!response.ok) {
+    if (response.status === 401) return [];
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to list matters (${response.status})`);
+  }
+  const json = await response.json();
+  return json.data.matters;
+}
+
+export interface CreateMatterInput {
+  title: string;
+  description?: string;
+  parties?: Party[];
+  court?: string;
+  cause_number?: string;
+}
+
+export async function createMatter(
+  input: CreateMatterInput,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<MatterDetail> {
+  const response = await fetch(`${BASE_URL}/api/v1/matters`, {
+    method: 'POST',
+    headers: await buildHeaders(userId, getToken),
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to create matter (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function getMatter(
+  matterId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<MatterDetail> {
+  const response = await fetch(`${BASE_URL}/api/v1/matters/${matterId}`, {
+    method: 'GET',
+    headers: await buildHeaders(userId, getToken),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to load matter (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function patchMatter(
+  matterId: string,
+  fields: Partial<CreateMatterInput & { status: MatterSummary['status'] }>,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<MatterDetail> {
+  const response = await fetch(`${BASE_URL}/api/v1/matters/${matterId}`, {
+    method: 'PATCH',
+    headers: await buildHeaders(userId, getToken),
+    body: JSON.stringify(fields),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to update matter (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function deleteMatter(
+  matterId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/v1/matters/${matterId}`, {
+    method: 'DELETE',
+    headers: await buildHeaders(userId, getToken),
+  });
+  if (!response.ok && response.status !== 204) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to delete matter (${response.status})`);
+  }
+}
+
+// ── Documents ────────────────────────────────────────────────────────────
+
+export interface GenerateCaseBriefInput {
+  url?: string;
+  text?: string;
+  title?: string;
+  query_id?: string;
+}
+
+export async function generateCaseBrief(
+  matterId: string,
+  input: GenerateCaseBriefInput,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<CaseBriefDocument> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/matters/${matterId}/case-briefs`,
+    {
+      method: 'POST',
+      headers: await buildHeaders(userId, getToken),
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to generate brief (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function getDocument(
+  documentId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<DocumentRecord> {
+  const response = await fetch(`${BASE_URL}/api/v1/documents/${documentId}`, {
+    method: 'GET',
+    headers: await buildHeaders(userId, getToken),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to load document (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function patchDocument(
+  documentId: string,
+  fields: { title?: string; content?: Record<string, unknown>; status?: 'draft' | 'final' },
+  userId?: string,
+  getToken?: GetToken,
+): Promise<DocumentRecord> {
+  const response = await fetch(`${BASE_URL}/api/v1/documents/${documentId}`, {
+    method: 'PATCH',
+    headers: await buildHeaders(userId, getToken),
+    body: JSON.stringify(fields),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to update document (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function deleteDocument(
+  documentId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<void> {
+  const response = await fetch(`${BASE_URL}/api/v1/documents/${documentId}`, {
+    method: 'DELETE',
+    headers: await buildHeaders(userId, getToken),
+  });
+  if (!response.ok && response.status !== 204) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to delete document (${response.status})`);
+  }
 }

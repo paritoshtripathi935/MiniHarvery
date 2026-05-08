@@ -50,6 +50,74 @@ export interface LegalAnswer {
   query_type: QueryType;
 }
 
+// ── User mode (Vidhi segment) ─────────────────────────────────────────────
+
+export type UserMode = 'associate' | 'solo' | 'student';
+
+// ── Matter (case file) ────────────────────────────────────────────────────
+
+export interface Party {
+  role: string;   // 'petitioner' | 'respondent' | 'plaintiff' | 'defendant' | ...
+  name: string;
+}
+
+export interface MatterSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  court: string | null;
+  cause_number: string | null;
+  status: 'active' | 'closed' | 'archived';
+  is_inbox: boolean;
+  parties: Party[];
+  created_at: string;
+  updated_at: string;
+  thread_count: number;
+  document_count: number;
+}
+
+export interface MatterDetail extends MatterSummary {
+  threads: ThreadSummary[];
+  documents: DocumentRecord[];
+}
+
+// ── Documents (polymorphic — case briefs, drafts, notes) ─────────────────
+
+export type DocumentType =
+  | 'case_brief'
+  | 'pleading_draft'
+  | 'authorities_table'
+  | 'note';
+
+export interface DocumentRecord<TContent = Record<string, unknown>> {
+  id: string;
+  matter_id: string;
+  type: DocumentType;
+  title: string;
+  content: TContent;
+  source_url: string | null;
+  source_query_id: string | null;
+  status: 'draft' | 'final';
+  created_at: string;
+  updated_at: string;
+}
+
+/** Strict shape returned by the case-brief generator. Mirrors the Python
+ * `CaseBrief` TypedDict — keep in sync. */
+export interface CaseBriefContent {
+  citation: string | null;
+  facts: string[];
+  issues: string[];
+  arguments_petitioner: string[];
+  arguments_respondent: string[];
+  ratio: string[];
+  holding: string[];
+  dicta: string[];
+  source_url: string | null;
+}
+
+export type CaseBriefDocument = DocumentRecord<CaseBriefContent>;
+
 // ── Thread (server history) ───────────────────────────────────────────────
 
 export interface ThreadSummary {
