@@ -1,7 +1,6 @@
 """DB access layer used by the API. Keeps SQL out of query_handler."""
 from __future__ import annotations
 
-import hashlib
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -20,28 +19,44 @@ logger = logging.getLogger(__name__)
 
 # ── Users ───────────────────────────────────────────────────────────────────
 
-def _stable_user_uuid(subject: str) -> uuid.UUID:
-    """Deterministic UUID from a subject key (X-User-Id header / IP).
+async def upsert_clerk_user(
+    db: AsyncSession,
+    *,
+    clerk_user_id: str,
+    email: Optional[str] = None,
+    display_name: Optional[str] = None,
+) -> uuid.UUID:
+    """Find-or-create a `users` row for a verified Clerk identity.
 
-    Lets us upsert a guest row idempotently — same browser/device hits the
-    same row across requests without storing a separate cookie mapping.
+    `clerk_user_id` is the JWT `sub`. We do SELECT-then-INSERT (rather than
+    INSERT...ON CONFLICT) because `users.clerk_user_id` is a partial unique
+    index (WHERE clerk_user_id IS NOT NULL) — straightforward upsert syntax
+    against a partial index is awkward, and this path runs once per request
+    so the extra SELECT is cheap.
     """
-    digest = hashlib.sha256(f"guest:{subject}".encode()).digest()[:16]
-    return uuid.UUID(bytes=digest, version=4)
-
-
-async def upsert_guest_user(db: AsyncSession, subject: str) -> uuid.UUID:
-    user_id = _stable_user_uuid(subject)
-    stmt = (
-        pg_insert(models.User)
-        .values(id=user_id, is_guest=True, display_name=f"guest:{subject[:32]}")
-        .on_conflict_do_update(
-            index_elements=["id"],
-            set_={"last_seen_at": datetime.now(timezone.utc)},
+    now = datetime.now(timezone.utc)
+    existing = (
+        await db.execute(
+            select(models.User.id).where(models.User.clerk_user_id == clerk_user_id)
         )
-    )
-    await db.execute(stmt)
-    return user_id
+    ).scalar_one_or_none()
+    if existing is not None:
+        await db.execute(
+            update(models.User)
+            .where(models.User.id == existing)
+            .values(last_seen_at=now, email=email or models.User.email)
+        )
+        return existing
+
+    new_id = uuid.uuid4()
+    db.add(models.User(
+        id=new_id,
+        clerk_user_id=clerk_user_id,
+        email=email,
+        display_name=display_name,
+    ))
+    await db.flush()
+    return new_id
 
 
 # ── Sessions ────────────────────────────────────────────────────────────────

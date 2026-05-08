@@ -41,7 +41,6 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE TABLE IF NOT EXISTS users (
     id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     clerk_user_id   text,
-    is_guest        boolean     NOT NULL DEFAULT false,
     email           citext,
     display_name    text,
     created_at      timestamptz NOT NULL DEFAULT now(),

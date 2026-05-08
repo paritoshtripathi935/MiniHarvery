@@ -24,6 +24,12 @@ class Settings(BaseSettings):
 
     # Auth
     CLERK_SECRET_KEY: str = ""
+    # Clerk JWT issuer — the `iss` claim every Clerk session token carries.
+    # Find it under Clerk dashboard → API Keys → "Show JWT public key" → issuer URL.
+    # Looks like `https://amazing-bird-12.clerk.accounts.dev` (no trailing slash).
+    # REQUIRED — the API refuses every request with 503 when this is empty.
+    CLERK_JWT_ISSUER: str = ""
+    CLERK_JWKS_TTL_SECONDS: int = 3600
 
     # App config
     ENV: str = "dev"

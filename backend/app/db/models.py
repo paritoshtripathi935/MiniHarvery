@@ -10,15 +10,12 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import (
-    BigInteger,
-    Boolean,
     CheckConstraint,
     ForeignKey,
     Index,
     Integer,
     LargeBinary,
     SmallInteger,
-    String,
     Text,
     UniqueConstraint,
     text,
@@ -65,7 +62,6 @@ class User(Base):
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
     clerk_user_id: Mapped[Optional[str]] = mapped_column(Text)
-    is_guest: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     email: Mapped[Optional[str]] = mapped_column(CITEXT)
     display_name: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
