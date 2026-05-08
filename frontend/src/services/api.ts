@@ -1,14 +1,28 @@
 /**
- * API service — mirrors MiniPerplexity's api.ts.
- * Handles legal search requests and SSE streaming for answers.
+ * API service — handles legal search requests and SSE streaming for answers.
+ *
+ * Auth: every call passes Clerk's `useAuth().getToken` as `getToken`. The
+ * resulting JWT is attached as `Authorization: Bearer <jwt>` and verified
+ * server-side against Clerk's JWKS. The backend rejects unauthenticated
+ * requests with 401 — there is no guest path.
  */
 import type { LegalSearchResult, VideoResult, Citation } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
-function buildHeaders(userId?: string): HeadersInit {
+export type GetToken = () => Promise<string | null>;
+
+async function buildHeaders(userId?: string, getToken?: GetToken): Promise<HeadersInit> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (userId) headers['X-User-Id'] = userId;
+  if (getToken) {
+    try {
+      const token = await getToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    } catch {
+      // Token fetch failed — backend will return 401 and the UI shows the error.
+    }
+  }
   return headers;
 }
 
@@ -18,10 +32,11 @@ export async function performLegalSearch(
   sessionId: string,
   query: string,
   userId?: string,
+  getToken?: GetToken,
 ): Promise<{ results: LegalSearchResult[]; videos: VideoResult[]; query_type: string }> {
   const response = await fetch(`${BASE_URL}/api/v1/search/${sessionId}`, {
     method: 'POST',
-    headers: buildHeaders(userId),
+    headers: await buildHeaders(userId, getToken),
     body: JSON.stringify({ query }),
   });
 
@@ -43,10 +58,11 @@ export async function getLegalAnswer(
   onDone: (citations: Citation[], suggested_steps: string[]) => void,
   onError: (message: string) => void,
   userId?: string,
+  getToken?: GetToken,
 ): Promise<void> {
   const response = await fetch(`${BASE_URL}/api/v1/answer/${sessionId}`, {
     method: 'POST',
-    headers: buildHeaders(userId),
+    headers: await buildHeaders(userId, getToken),
     body: JSON.stringify({ query }),
   });
 
@@ -93,6 +109,13 @@ export async function getLegalAnswer(
 
 // ── Session ──────────────────────────────────────────────────────────────
 
-export async function clearSession(sessionId: string): Promise<void> {
-  await fetch(`${BASE_URL}/api/v1/session/${sessionId}`, { method: 'DELETE' });
+export async function clearSession(
+  sessionId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<void> {
+  await fetch(`${BASE_URL}/api/v1/session/${sessionId}`, {
+    method: 'DELETE',
+    headers: await buildHeaders(userId, getToken),
+  });
 }

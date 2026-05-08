@@ -8,3 +8,9 @@ bs4
 gunicorn
 python-jose[cryptography]
 httpx
+
+# Database (Neon Postgres)
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.29
+alembic>=1.13
+greenlet>=3.0
