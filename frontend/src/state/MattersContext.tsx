@@ -19,7 +19,9 @@ import { useAuth, useUser } from '@clerk/clerk-react';
 import {
   createMatter as apiCreateMatter,
   listMatters,
+  patchMatter,
   type CreateMatterInput,
+  type UpdateMatterInput,
 } from '../services/api';
 import type { MatterDetail, MatterSummary } from '../types';
 
@@ -33,10 +35,29 @@ interface Ctx {
   upsertSummary: (m: MatterSummary) => void;
   /** Create a matter on the server, refresh the list, return the detail. */
   createMatter: (input: CreateMatterInput) => Promise<MatterDetail>;
+  /** PATCH a matter, optimistically apply the change, reconcile on response. */
+  updateMatter: (id: string, fields: UpdateMatterInput) => Promise<MatterDetail>;
   inboxMatter: MatterSummary | null;
 }
 
 const MattersCtx = createContext<Ctx | null>(null);
+
+function summaryFromDetail(detail: MatterDetail): MatterSummary {
+  return {
+    id: detail.id,
+    title: detail.title,
+    description: detail.description,
+    court: detail.court,
+    cause_number: detail.cause_number,
+    status: detail.status,
+    is_inbox: detail.is_inbox,
+    parties: detail.parties,
+    created_at: detail.created_at,
+    updated_at: detail.updated_at,
+    thread_count: detail.threads.length,
+    document_count: detail.documents.length,
+  };
+}
 
 export function MattersProvider({ children }: { children: ReactNode }) {
   const { user } = useUser();
@@ -79,23 +100,36 @@ export function MattersProvider({ children }: { children: ReactNode }) {
   const createMatter = useCallback(
     async (input: CreateMatterInput) => {
       const detail = await apiCreateMatter(input, user?.id, getAuthToken);
-      upsertSummary({
-        id: detail.id,
-        title: detail.title,
-        description: detail.description,
-        court: detail.court,
-        cause_number: detail.cause_number,
-        status: detail.status,
-        is_inbox: detail.is_inbox,
-        parties: detail.parties,
-        created_at: detail.created_at,
-        updated_at: detail.updated_at,
-        thread_count: detail.threads.length,
-        document_count: detail.documents.length,
-      });
+      upsertSummary(summaryFromDetail(detail));
       return detail;
     },
     [user?.id, getAuthToken, upsertSummary],
+  );
+
+  const updateMatter = useCallback(
+    async (id: string, fields: UpdateMatterInput) => {
+      // Optimistic: project the new fields onto the local summary so the
+      // sidebar / breadcrumb update before the request returns. If the
+      // server-side response narrows or reshapes anything, the reconcile
+      // step replaces the row with the server's truth.
+      setMatters(prev => {
+        const idx = prev.findIndex(x => x.id === id);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next[idx] = { ...prev[idx], ...projectSummaryPatch(fields) };
+        return next;
+      });
+      try {
+        const detail = await patchMatter(id, fields, user?.id, getAuthToken);
+        upsertSummary(summaryFromDetail(detail));
+        return detail;
+      } catch (err) {
+        // Roll back the optimistic apply by re-reading the server list.
+        void refresh();
+        throw err;
+      }
+    },
+    [user?.id, getAuthToken, upsertSummary, refresh],
   );
 
   const inboxMatter = useMemo(
@@ -111,10 +145,25 @@ export function MattersProvider({ children }: { children: ReactNode }) {
     refresh,
     upsertSummary,
     createMatter,
+    updateMatter,
     inboxMatter,
   };
 
   return <MattersCtx.Provider value={value}>{children}</MattersCtx.Provider>;
+}
+
+/** Project the subset of an UpdateMatterInput that matches MatterSummary
+ *  fields, so the optimistic apply doesn't introduce keys the summary
+ *  shape doesn't have (e.g. `parties` is shared). */
+function projectSummaryPatch(fields: UpdateMatterInput): Partial<MatterSummary> {
+  const out: Partial<MatterSummary> = {};
+  if (fields.title !== undefined) out.title = fields.title;
+  if (fields.description !== undefined) out.description = fields.description ?? null;
+  if (fields.court !== undefined) out.court = fields.court ?? null;
+  if (fields.cause_number !== undefined) out.cause_number = fields.cause_number ?? null;
+  if (fields.parties !== undefined) out.parties = fields.parties ?? [];
+  if (fields.status !== undefined) out.status = fields.status;
+  return out;
 }
 
 export function useMatters(): Ctx {
