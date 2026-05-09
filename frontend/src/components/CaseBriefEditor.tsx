@@ -2,14 +2,13 @@
  * CaseBriefEditor — composition of EditableLists, one per Case Brief
  * section, plus the editable citation row at the top.
  *
- * Saving is debounced: any local change updates parent state immediately
- * (so undo/redo within a session feels instant), and a 600ms debounce
- * fires PATCH /documents/{id} with the merged content. The parent is
- * responsible for actually calling the network.
+ * Local state mirrors the prop so undo/redo feels instant; the actual
+ * PATCH is debounced via `useDebouncedSave` (which also flushes on unmount).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import EditableList from './EditableList';
 import type { CaseBriefContent } from '../types';
+import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { t } from '../design/tokens';
 
 interface Props {
@@ -19,46 +18,22 @@ interface Props {
 
 export default function CaseBriefEditor({ content, onSave }: Props) {
   const [local, setLocal] = useState<CaseBriefContent>(content);
+  const queueSave = useDebouncedSave(onSave, 600);
 
-  // When the prop changes (we just loaded the doc, or a different doc),
-  // reset local. This is the standard "controlled-but-mostly-uncontrolled"
-  // shape — the URL/route is the source of truth, local is the working copy.
+  // When the prop changes (different doc loaded), reset local. This is the
+  // standard "controlled-but-mostly-uncontrolled" shape — route is source
+  // of truth, local is the working copy.
   useEffect(() => {
     setLocal(content);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content]);
-
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queue = useRef<CaseBriefContent | null>(null);
 
   const update = (patch: Partial<CaseBriefContent>) => {
     setLocal(prev => {
       const next = { ...prev, ...patch };
-      queue.current = next;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        if (queue.current) {
-          onSave(queue.current).catch(err =>
-            console.warn('Brief save failed:', err),
-          );
-        }
-      }, 600);
+      queueSave(next);
       return next;
     });
   };
-
-  // Make sure we don't lose pending edits if the component unmounts.
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      if (queue.current) {
-        onSave(queue.current).catch(() => {
-          /* unmount race; nothing to do */
-        });
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <div>

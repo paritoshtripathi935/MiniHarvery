@@ -89,12 +89,10 @@ export type DocumentType =
   | 'authorities_table'
   | 'note';
 
-export interface DocumentRecord<TContent = Record<string, unknown>> {
+interface DocumentBase {
   id: string;
   matter_id: string;
-  type: DocumentType;
   title: string;
-  content: TContent;
   source_url: string | null;
   source_query_id: string | null;
   status: 'draft' | 'final';
@@ -116,7 +114,34 @@ export interface CaseBriefContent {
   source_url: string | null;
 }
 
-export type CaseBriefDocument = DocumentRecord<CaseBriefContent>;
+export interface CaseBriefDocument extends DocumentBase {
+  type: 'case_brief';
+  content: CaseBriefContent;
+}
+
+export interface PleadingDraftDocument extends DocumentBase {
+  type: 'pleading_draft';
+  content: Record<string, unknown>;
+}
+
+export interface AuthoritiesTableDocument extends DocumentBase {
+  type: 'authorities_table';
+  content: Record<string, unknown>;
+}
+
+export interface NoteDocument extends DocumentBase {
+  type: 'note';
+  content: Record<string, unknown>;
+}
+
+/** Discriminated union over `type` — narrowing on `doc.type === 'case_brief'`
+ * gives `CaseBriefContent` without casts. Sprint 3 tightens
+ * `PleadingDraftDocument['content']` when the draft template fields land. */
+export type DocumentRecord =
+  | CaseBriefDocument
+  | PleadingDraftDocument
+  | AuthoritiesTableDocument
+  | NoteDocument;
 
 // ── Thread (server history) ───────────────────────────────────────────────
 

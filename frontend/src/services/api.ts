@@ -260,6 +260,10 @@ export interface CreateMatterInput {
   cause_number?: string;
 }
 
+export type UpdateMatterInput = Partial<CreateMatterInput> & {
+  status?: MatterSummary['status'];
+};
+
 export async function createMatter(
   input: CreateMatterInput,
   userId?: string,
@@ -295,7 +299,7 @@ export async function getMatter(
 
 export async function patchMatter(
   matterId: string,
-  fields: Partial<CreateMatterInput & { status: MatterSummary['status'] }>,
+  fields: UpdateMatterInput,
   userId?: string,
   getToken?: GetToken,
 ): Promise<MatterDetail> {

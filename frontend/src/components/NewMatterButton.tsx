@@ -7,9 +7,10 @@
  * cause number live on /matters/:id/settings — adding them up-front would
  * make this feel like a wizard.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Plus, Loader2 } from 'lucide-react';
 import { useMatters } from '../state/MattersContext';
+import { useDismissable } from '../hooks/useDismissable';
 import { t } from '../design/tokens';
 
 interface Props {
@@ -28,23 +29,13 @@ export default function NewMatterButton({
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        cancel();
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const cancel = () => {
+  const cancel = useCallback(() => {
     setOpen(false);
     setTitle('');
     setError(null);
-  };
+  }, []);
+
+  useDismissable(wrapRef, open, cancel);
 
   const submit = async () => {
     const clean = title.trim();
