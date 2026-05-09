@@ -1,16 +1,11 @@
 """Case Brief Generator — turns a judgment URL or pasted text into a
 structured brief: facts, issues, arguments, ratio, holding, dicta.
 
-Architecture:
-- `generate_case_brief(text)` is the LLM call. Pure function, no DB.
-- `fetch_case_text(url)` reuses the existing content_extractor with a
-  larger char budget than search snippets.
-- The handler in document_handler stitches these together and persists
-  the result as a Document of type='case_brief'.
-
 The prompt is crafted to (a) refuse to invent citations/facts and (b)
 return strict JSON we can store + render. Every field is a list of strings
 so the FE can render bullet points without re-parsing prose.
+
+HTTP plumbing for Cloudflare lives in `cloudflare_ai`.
 """
 from __future__ import annotations
 
@@ -19,18 +14,10 @@ import logging
 import re
 from typing import Optional, TypedDict
 
-import requests
-
-from app.core.settings import settings
+from app.services import cloudflare_ai
 from app.services.content_extractor import fetch_content_from_url
 
 logger = logging.getLogger(__name__)
-
-def _cf_url() -> str:
-    return (
-        "https://api.cloudflare.com/client/v4/accounts/"
-        f"{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{settings.CLOUDFLARE_LLM_MODEL}"
-    )
 
 # Larger budget than search snippets — judgments are long and we want the
 # LLM to see facts AND ratio, which often live many paragraphs apart.
@@ -115,34 +102,26 @@ def generate_case_brief(
 ) -> CaseBrief:
     """Call Cloudflare AI with the structured prompt and return a CaseBrief.
     Raises ValueError on missing config or unparsable response."""
-    if not settings.CLOUDFLARE_ACCOUNT_ID or not settings.CLOUDFLARE_API_TOKEN:
+    if not cloudflare_ai.is_configured():
         raise ValueError("Cloudflare AI credentials are not configured")
     text = text.strip()
     if not text:
         raise ValueError("Cannot generate a brief from empty text")
 
-    payload = {
-        "messages": [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _USER_TEMPLATE.format(
-                url=source_url or "(none provided)",
-                text=text[:_FETCH_CHAR_BUDGET],
-            )},
-        ],
-        "max_tokens": 1500,
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": _USER_TEMPLATE.format(
+            url=source_url or "(none provided)",
+            text=text[:_FETCH_CHAR_BUDGET],
+        )},
+    ]
+    try:
         # Low temperature: brief generation is extractive, not creative.
-        "temperature": 0.2,
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    resp = requests.post(_cf_url(), headers=headers, json=payload, timeout=60)
-    resp.raise_for_status()
-    body = resp.json()
-    if not body.get("success"):
-        raise ValueError(f"Cloudflare AI error: {body.get('errors')}")
-    raw = body["result"]["response"]
+        raw = cloudflare_ai.chat_completion(
+            messages, max_tokens=1500, temperature=0.2, timeout=60
+        )
+    except cloudflare_ai.CloudflareAIError as exc:
+        raise ValueError(str(exc)) from exc
 
     try:
         parsed = _extract_json(raw)
