@@ -23,7 +23,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.core.settings import settings
-from app.models.search_model import LegalSearchResult, VideoResult
+from app.schemas.search_model import LegalSearchResult, VideoResult
 from app.services.content_extractor import fetch_content_from_url, _next_agent
 
 logger = logging.getLogger(__name__)

@@ -28,13 +28,13 @@ from app.api.deps import CallerIdentity, resolve_caller
 from app.core.settings import settings
 from app.db import AsyncSessionLocal, db_enabled, get_session
 from app.db import repositories as repo
-from app.models.query_model import AnswerRequest, SearchRequest
+from app.core.auth import auth_enabled
+from app.core.rate_limiter import check_rate_limit
+from app.schemas.query_model import AnswerRequest, SearchRequest
+from app.services.citation_formatter import extract_citations, extract_suggested_steps
 from app.services.legal_search_service import search_legal_sources, search_videos
 from app.services.language_model import generate_legal_answer, rewrite_query_for_search
 from app.services.query_classifier import classify_query
-from app.utils.citation_formatter import extract_citations, extract_suggested_steps
-from app.utils.clerk_auth import auth_enabled
-from app.utils.rate_limiter import check_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

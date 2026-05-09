@@ -6,7 +6,7 @@ from typing import Generator, List
 import requests
 
 from app.core.settings import settings
-from app.models.search_model import LegalSearchResult
+from app.schemas.search_model import LegalSearchResult
 
 logger = logging.getLogger(__name__)
 

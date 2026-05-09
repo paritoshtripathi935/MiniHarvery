@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import settings
 from app.db import models
-from app.models.search_model import LegalSearchResult, VideoResult
+from app.schemas.search_model import LegalSearchResult, VideoResult
 
 logger = logging.getLogger(__name__)
 

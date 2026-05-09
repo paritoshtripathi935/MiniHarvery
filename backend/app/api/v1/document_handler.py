@@ -28,7 +28,7 @@ from app.services.case_brief_generator import (
     fetch_case_text,
     generate_case_brief,
 )
-from app.utils.rate_limiter import check_rate_limit
+from app.core.rate_limiter import check_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
