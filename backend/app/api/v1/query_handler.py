@@ -104,7 +104,7 @@ async def search(
                     db,
                     user_id=caller.user_id,
                     matter_id=target_matter_id,
-                    title=repo._derive_title(query),
+                    title=repo.derive_thread_title(query),
                 )
                 thread_id = thread.id
 
@@ -190,7 +190,7 @@ async def answer(
                 db,
                 user_id=user_id,
                 matter_id=caller.inbox_matter_id,
-                title=repo._derive_title(query),
+                title=repo.derive_thread_title(query),
             )
             latest_q = await repo.insert_query(
                 db,

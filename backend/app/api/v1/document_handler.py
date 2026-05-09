@@ -109,7 +109,7 @@ async def create_case_brief(
             logger.exception("Failed to persist case brief")
             raise HTTPException(status_code=500, detail="Failed to save brief")
 
-    return {"data": repo._document_to_dict(doc), "status": "success"}
+    return {"data": repo.document_to_dict(doc), "status": "success"}
 
 
 # ── GET /documents/{id} ──────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ async def get_document(
     )
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return {"data": repo._document_to_dict(doc), "status": "success"}
+    return {"data": repo.document_to_dict(doc), "status": "success"}
 
 
 # ── PATCH /documents/{id} ────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ async def update_document(
     )
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return {"data": repo._document_to_dict(doc), "status": "success"}
+    return {"data": repo.document_to_dict(doc), "status": "success"}
 
 
 # ── DELETE /documents/{id} ───────────────────────────────────────────────────
