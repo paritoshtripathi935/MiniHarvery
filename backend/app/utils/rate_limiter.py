@@ -1,7 +1,4 @@
-"""
-Token bucket rate limiter — ported directly from MiniPerplexity.
-30 calls/min per endpoint key, 0.5 tokens/sec refill.
-"""
+"""In-memory token-bucket rate limiter — 30 calls/min per (endpoint, user)."""
 import time
 import threading
 from typing import Dict
@@ -11,7 +8,6 @@ from app.core.settings import settings
 
 
 class TokenBucket:
-    """Token bucket algorithm (same as MiniPerplexity's rate_limter.py)."""
 
     def __init__(self, capacity: int, refill_rate: float):
         self.capacity = capacity

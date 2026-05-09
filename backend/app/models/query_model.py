@@ -1,17 +1,7 @@
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
-
-from app.models.search_model import LegalSearchResult
-
-
-class QueryRequest(BaseModel):
-    """Legacy /answer body shape (unused by the live FE — kept for OpenAPI)."""
-    query: str
-    search_results: List[LegalSearchResult] = []
-    previous_queries: List[str] = []
-    query_type: str = "general"
 
 
 class SearchRequest(BaseModel):

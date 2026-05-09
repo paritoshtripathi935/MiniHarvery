@@ -49,12 +49,10 @@ def _email_from_claims(claims: dict) -> Optional[str]:
 
 
 def _name_from_claims(claims: dict) -> Optional[str]:
-    return (
-        claims.get("name")
-        or " ".join(filter(None, [claims.get("first_name"), claims.get("last_name")])).strip()
-        or claims.get("username")
-        or None
-    )
+    full_name = " ".join(
+        p for p in (claims.get("first_name"), claims.get("last_name")) if p
+    ).strip()
+    return claims.get("name") or full_name or claims.get("username") or None
 
 
 async def resolve_caller(request: Request) -> CallerIdentity:

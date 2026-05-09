@@ -1,7 +1,4 @@
-"""
-Vidhi backend — FastAPI entry point.
-Structure mirrors MiniPerplexity's main.py.
-"""
+"""Vidhi backend — FastAPI entry point."""
 import logging
 
 from fastapi import FastAPI
@@ -27,7 +24,6 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENV == "dev" else None,
 )
 
-# CORS — same pattern as MiniPerplexity
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
@@ -44,10 +40,29 @@ app.include_router(document_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
+    """Liveness probe — process is up. See /api/v1/health for component status."""
     return {"status": "ok", "version": "1.0.0", "env": settings.ENV}
+
+
+# Critical settings — empty values do not crash startup (Render env vars
+# can propagate slowly), but we log a WARNing so a missed config is loud
+# rather than surfacing as a confusing 401/503 on first traffic.
+_CRITICAL_SETTINGS = (
+    "DATABASE_URL",
+    "CLERK_JWT_ISSUER",
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID",
+)
 
 
 @app.on_event("startup")
 async def startup():
     logger.info("Vidhi starting — ENV=%s", settings.ENV)
     logger.info("Allowed origins: %s", settings.allowed_origins_list)
+
+    missing = [name for name in _CRITICAL_SETTINGS if not getattr(settings, name)]
+    if missing:
+        logger.warning(
+            "Critical settings missing: %s — affected requests will return 503",
+            ", ".join(missing),
+        )

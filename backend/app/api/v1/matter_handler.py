@@ -10,19 +10,18 @@ Every read/write is scoped by user_id; cross-user access returns 404.
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CallerIdentity, resolve_caller
-from app.db import AsyncSessionLocal
+from app.db import get_session
 from app.db import repositories as repo
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 
 class PartyDTO(BaseModel):
@@ -50,9 +49,9 @@ class MatterUpdate(BaseModel):
 @router.get("/matters")
 async def list_matters(
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    async with AsyncSessionLocal() as db:
-        matters = await repo.list_user_matters(db, caller.user_id)
+    matters = await repo.list_user_matters(db, caller.user_id)
     return {"data": {"matters": matters}, "status": "success"}
 
 
@@ -60,26 +59,20 @@ async def list_matters(
 async def create_matter(
     body: MatterCreate,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    async with AsyncSessionLocal() as db:
-        try:
-            matter = await repo.create_matter(
-                db,
-                user_id=caller.user_id,
-                title=body.title.strip() or "Untitled matter",
-                description=body.description,
-                parties=[p.model_dump() for p in body.parties],
-                court=body.court,
-                cause_number=body.cause_number,
-            )
-            await db.commit()
-            full = await repo.fetch_matter_full(
-                db, matter_id=matter.id, user_id=caller.user_id
-            )
-        except Exception:
-            await db.rollback()
-            logger.exception("Failed to create matter")
-            raise HTTPException(status_code=500, detail="Failed to create matter")
+    matter = await repo.create_matter(
+        db,
+        user_id=caller.user_id,
+        title=body.title.strip() or "Untitled matter",
+        description=body.description,
+        parties=[p.model_dump() for p in body.parties],
+        court=body.court,
+        cause_number=body.cause_number,
+    )
+    full = await repo.fetch_matter_full(
+        db, matter_id=matter.id, user_id=caller.user_id
+    )
     return {"data": full, "status": "success"}
 
 
@@ -87,11 +80,11 @@ async def create_matter(
 async def get_matter(
     matter_id: uuid.UUID,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    async with AsyncSessionLocal() as db:
-        full = await repo.fetch_matter_full(
-            db, matter_id=matter_id, user_id=caller.user_id
-        )
+    full = await repo.fetch_matter_full(
+        db, matter_id=matter_id, user_id=caller.user_id
+    )
     if full is None:
         raise HTTPException(status_code=404, detail="Matter not found")
     return {"data": full, "status": "success"}
@@ -102,31 +95,27 @@ async def update_matter(
     matter_id: uuid.UUID,
     body: MatterUpdate,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     fields = body.model_dump(exclude_none=True)
     if "parties" in fields:
-        fields["parties"] = [p.model_dump() if hasattr(p, "model_dump") else p
-                             for p in fields["parties"]]
+        fields["parties"] = [
+            p.model_dump() if hasattr(p, "model_dump") else p
+            for p in fields["parties"]
+        ]
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    async with AsyncSessionLocal() as db:
-        try:
-            ok = await repo.update_matter(
-                db,
-                matter_id=matter_id,
-                user_id=caller.user_id,
-                fields=fields,
-            )
-            await db.commit()
-            full = await repo.fetch_matter_full(
-                db, matter_id=matter_id, user_id=caller.user_id
-            )
-        except Exception:
-            await db.rollback()
-            logger.exception("Failed to update matter")
-            raise HTTPException(status_code=500, detail="Failed to update matter")
-    if not ok or full is None:
+    ok = await repo.update_matter(
+        db, matter_id=matter_id, user_id=caller.user_id, fields=fields
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Matter not found")
+
+    full = await repo.fetch_matter_full(
+        db, matter_id=matter_id, user_id=caller.user_id
+    )
+    if full is None:
         raise HTTPException(status_code=404, detail="Matter not found")
     return {"data": full, "status": "success"}
 
@@ -135,17 +124,11 @@ async def update_matter(
 async def delete_matter(
     matter_id: uuid.UUID,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> None:
-    async with AsyncSessionLocal() as db:
-        try:
-            ok = await repo.soft_delete_matter(
-                db, matter_id=matter_id, user_id=caller.user_id
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            logger.exception("Failed to delete matter")
-            raise HTTPException(status_code=500, detail="Failed to delete matter")
+    ok = await repo.soft_delete_matter(
+        db, matter_id=matter_id, user_id=caller.user_id
+    )
     if not ok:
         # Either it doesn't exist, doesn't belong to caller, or is the Inbox.
         raise HTTPException(

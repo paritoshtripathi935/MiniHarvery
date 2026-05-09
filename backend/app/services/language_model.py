@@ -1,7 +1,4 @@
-"""
-Language model service — Cloudflare AI Workers integration.
-Mirrors MiniPerplexity's language_model.py exactly, adapted for the Harvey legal persona.
-"""
+"""Cloudflare Workers AI integration for query rewriting and streaming answers."""
 import json
 import logging
 from typing import Generator, List
@@ -13,10 +10,12 @@ from app.models.search_model import LegalSearchResult
 
 logger = logging.getLogger(__name__)
 
-_CF_URL = (
-    "https://api.cloudflare.com/client/v4/accounts/{account_id}"
-    "/ai/run/@cf/meta/llama-3.1-70b-instruct"
-)
+
+def _cf_url() -> str:
+    return (
+        "https://api.cloudflare.com/client/v4/accounts/"
+        f"{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{settings.CLOUDFLARE_LLM_MODEL}"
+    )
 
 # ── Harvey system prompt ─────────────────────────────────────────────────────
 
@@ -56,7 +55,7 @@ Rules:
 
 
 def _format_search_results(results: List[LegalSearchResult]) -> str:
-    """Format search results for LLM context injection (same pattern as MiniPerplexity)."""
+    """Format search results for LLM context injection."""
     if not results:
         return "No search results available."
 
@@ -82,7 +81,7 @@ def _build_messages(
     search_results: List[LegalSearchResult],
     previous_queries: List[str],
 ) -> List[dict]:
-    """Build Cloudflare AI message array (same structure as MiniPerplexity)."""
+    """Build the Cloudflare AI messages array."""
     user_content = f"""Query: {query}
 Query Type: {query_type}
 """
@@ -122,10 +121,9 @@ def rewrite_query_for_search(raw_query: str) -> str:
     if not settings.CLOUDFLARE_API_TOKEN or not settings.CLOUDFLARE_ACCOUNT_ID:
         return raw_query
 
-    url = _CF_URL.format(account_id=settings.CLOUDFLARE_ACCOUNT_ID)
     try:
         response = requests.post(
-            url,
+            _cf_url(),
             headers={
                 "Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}",
                 "Content-Type": "application/json",
@@ -173,21 +171,16 @@ def generate_legal_answer(
     search_results: List[LegalSearchResult],
     previous_queries: List[str],
 ) -> Generator[str, None, None]:
-    """
-    Call Cloudflare AI Workers with streaming.
-    Yields text chunks as they arrive (SSE compatible).
-    Mirrors MiniPerplexity's language_model.py streaming pattern.
-    """
+    """Call Cloudflare AI Workers with streaming. Yields text chunks (SSE-friendly)."""
     if not settings.CLOUDFLARE_API_TOKEN or not settings.CLOUDFLARE_ACCOUNT_ID:
         yield "Cloudflare AI is not configured. Please set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
         return
 
-    url = _CF_URL.format(account_id=settings.CLOUDFLARE_ACCOUNT_ID)
     messages = _build_messages(query, query_type, search_results, previous_queries)
 
     try:
         response = requests.post(
-            url,
+            _cf_url(),
             headers={
                 "Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}",
                 "Content-Type": "application/json",

@@ -1,13 +1,14 @@
-"""Document endpoints — case briefs (Sprint 1) and pleading drafts /
-authorities tables / notes (Sprint 2+).
+"""Document endpoints — case briefs, pleading drafts, authorities tables, notes.
 
 POST   /matters/{matter_id}/case-briefs   — generate + persist a case brief
 GET    /documents/{id}                    — fetch a document
 PATCH  /documents/{id}                    — edit title / content / status
 DELETE /documents/{id}                    — soft-delete
 
-The case-brief generator is the only LLM-backed endpoint here today; the
-other endpoints are CRUD over the polymorphic `documents` table.
+Case-brief generation is the only LLM-backed endpoint here; the others are
+CRUD over the polymorphic `documents` table. The brief endpoint manages its
+own DB sessions because the LLM call sits between two DB calls and we don't
+want to hold a pool connection over a 30 s round trip.
 """
 from __future__ import annotations
 
@@ -17,9 +18,10 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CallerIdentity, resolve_caller
-from app.db import AsyncSessionLocal
+from app.db import AsyncSessionLocal, get_session
 from app.db import repositories as repo
 from app.services.case_brief_generator import (
     derive_brief_title,
@@ -116,11 +118,11 @@ async def create_case_brief(
 async def get_document(
     document_id: uuid.UUID,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    async with AsyncSessionLocal() as db:
-        doc = await repo.get_document_owned_by(
-            db, document_id=document_id, user_id=caller.user_id
-        )
+    doc = await repo.get_document_owned_by(
+        db, document_id=document_id, user_id=caller.user_id
+    )
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"data": repo._document_to_dict(doc), "status": "success"}
@@ -133,28 +135,22 @@ async def update_document(
     document_id: uuid.UUID,
     body: DocumentUpdate,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
     fields = body.model_dump(exclude_none=True)
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    async with AsyncSessionLocal() as db:
-        try:
-            ok = await repo.update_document(
-                db,
-                document_id=document_id,
-                user_id=caller.user_id,
-                fields=fields,
-            )
-            await db.commit()
-            doc = await repo.get_document_owned_by(
-                db, document_id=document_id, user_id=caller.user_id
-            )
-        except Exception:
-            await db.rollback()
-            logger.exception("Failed to update document")
-            raise HTTPException(status_code=500, detail="Failed to update document")
-    if not ok or doc is None:
+    ok = await repo.update_document(
+        db, document_id=document_id, user_id=caller.user_id, fields=fields
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc = await repo.get_document_owned_by(
+        db, document_id=document_id, user_id=caller.user_id
+    )
+    if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"data": repo._document_to_dict(doc), "status": "success"}
 
@@ -165,16 +161,10 @@ async def update_document(
 async def delete_document(
     document_id: uuid.UUID,
     caller: CallerIdentity = Depends(resolve_caller),
+    db: AsyncSession = Depends(get_session),
 ) -> None:
-    async with AsyncSessionLocal() as db:
-        try:
-            ok = await repo.soft_delete_document(
-                db, document_id=document_id, user_id=caller.user_id
-            )
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            logger.exception("Failed to delete document")
-            raise HTTPException(status_code=500, detail="Failed to delete document")
+    ok = await repo.soft_delete_document(
+        db, document_id=document_id, user_id=caller.user_id
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="Document not found")

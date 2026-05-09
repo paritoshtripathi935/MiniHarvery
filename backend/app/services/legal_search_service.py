@@ -1,6 +1,5 @@
 """
 Legal search service — parallel fetch from Indian legal sources.
-Architecture mirrors MiniPerplexity's search_service.py (ThreadPoolExecutor pattern).
 
 Sources (in authority order):
   1. Indian Kanoon API  — official REST API, needs auth token. Complete SC/HC/
@@ -273,7 +272,7 @@ def search_videos(query: str, max_results: int = 6) -> List[VideoResult]:
 
 
 # ─────────────────────────────────────────────
-# Parallel orchestrator (mirrors MiniPerplexity's ThreadPoolExecutor pattern)
+# Parallel orchestrator
 # ─────────────────────────────────────────────
 
 def search_legal_sources(query: str) -> List[LegalSearchResult]:
