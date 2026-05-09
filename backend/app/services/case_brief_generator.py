@@ -14,6 +14,7 @@ import logging
 import re
 from typing import Optional, TypedDict
 
+from app.core.settings import settings
 from app.services import cloudflare_ai
 from app.services.content_extractor import fetch_content_from_url
 
@@ -118,7 +119,11 @@ def generate_case_brief(
     try:
         # Low temperature: brief generation is extractive, not creative.
         raw = cloudflare_ai.chat_completion(
-            messages, max_tokens=1500, temperature=0.2, timeout=60
+            messages,
+            model=settings.CLOUDFLARE_LLM_MODEL_BRIEF,
+            max_tokens=1500,
+            temperature=0.2,
+            timeout=60,
         )
     except cloudflare_ai.CloudflareAIError as exc:
         raise ValueError(str(exc)) from exc
