@@ -21,7 +21,7 @@
 import { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Copy, Check, Loader2, Scale, ArrowUpRight } from 'lucide-react';
-import type { Message, Citation, LegalSearchResult } from '../types';
+import type { Message, Citation, LegalSearchResult, LlmCallMetrics } from '../types';
 import CitationChip from './CitationChip';
 
 interface Props {
@@ -544,6 +544,12 @@ function BriefTurn({
         </section>
       )}
 
+      {/* Generation metrics — only after stream completes, only if backend
+          included them. Older threads loaded from history won't have them. */}
+      {!isStreaming && turn.answer?.metrics && (
+        <MetricsFooter metrics={turn.answer.metrics} />
+      )}
+
       {/* No-results fallback */}
       {!turn.isSearching &&
         !turn.isAnswering &&
@@ -555,4 +561,50 @@ function BriefTurn({
         )}
     </>
   );
+}
+
+/**
+ * Generation metrics — small monospace strip below the answer. Shows
+ * total wall-clock latency, time-to-first-token if reported, output
+ * token count if reported, and the model slug. Intentionally low-key:
+ * useful for the user, not part of the legal memo.
+ */
+function MetricsFooter({ metrics }: { metrics: LlmCallMetrics }) {
+  const parts: string[] = [];
+  parts.push(`${(metrics.latency_ms / 1000).toFixed(1)} s`);
+  if (metrics.ttft_ms != null) {
+    parts.push(`TTFT ${(metrics.ttft_ms / 1000).toFixed(1)} s`);
+  }
+  if (metrics.output_tokens != null) {
+    parts.push(`${metrics.output_tokens.toLocaleString()} out`);
+  }
+  if (metrics.input_tokens != null) {
+    parts.push(`${metrics.input_tokens.toLocaleString()} in`);
+  }
+  if (metrics.model) {
+    parts.push(modelLabel(metrics.model));
+  }
+  return (
+    <div
+      className="mono mt-6 pt-3 border-t flex flex-wrap"
+      style={{
+        gap: '14px',
+        borderColor: 'var(--border-subtle)',
+        fontSize: '10px',
+        letterSpacing: '0.05em',
+        color: 'var(--text-dim)',
+      }}
+      title="Generation telemetry — see /matters → llm_calls for the full series"
+    >
+      {parts.map((p, i) => (
+        <span key={i}>{p}</span>
+      ))}
+    </div>
+  );
+}
+
+/** Trim the leading `@cf/<vendor>/` so the model strip stays compact. */
+function modelLabel(slug: string): string {
+  const m = /^@cf\/[^/]+\/(.+)$/.exec(slug);
+  return m ? m[1] : slug;
 }

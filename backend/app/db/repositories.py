@@ -897,3 +897,48 @@ async def soft_delete_document(
         .values(deleted_at=now)
     )
     return result.rowcount > 0
+
+
+# ── LLM telemetry ───────────────────────────────────────────────────────────
+
+async def record_llm_call(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    call_site: str,
+    model: str,
+    latency_ms: int,
+    status: str,
+    matter_id: Optional[uuid.UUID] = None,
+    query_id: Optional[uuid.UUID] = None,
+    document_id: Optional[uuid.UUID] = None,
+    answer_id: Optional[uuid.UUID] = None,
+    ttft_ms: Optional[int] = None,
+    input_tokens: Optional[int] = None,
+    output_tokens: Optional[int] = None,
+    error_class: Optional[str] = None,
+    prompt_hash: Optional[str] = None,
+) -> models.LlmCall:
+    """Persist one Workers AI call. Caller flushes/commits as part of the
+    same transaction that creates the artefact (matter / query / document /
+    answer) so a half-written telemetry row never points at a row that
+    isn't there."""
+    row = models.LlmCall(
+        user_id=user_id,
+        call_site=call_site,
+        model=model,
+        matter_id=matter_id,
+        query_id=query_id,
+        document_id=document_id,
+        answer_id=answer_id,
+        latency_ms=latency_ms,
+        ttft_ms=ttft_ms,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        status=status,
+        error_class=error_class,
+        prompt_hash=prompt_hash,
+    )
+    db.add(row)
+    await db.flush()
+    return row

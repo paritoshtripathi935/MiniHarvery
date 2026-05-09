@@ -325,7 +325,7 @@ export default function MatterDetailPage() {
             ),
           );
         },
-        (citations: Citation[], suggested_steps: string[]) => {
+        (citations, suggested_steps, metrics) => {
           setMessages(prev =>
             prev.map(m => {
               if (m.id !== realQueryId) return m;
@@ -338,6 +338,7 @@ export default function MatterDetailPage() {
                   citations,
                   suggested_steps,
                   query_type: search.query_type as QueryType,
+                  metrics,
                 },
               };
             }),
@@ -443,9 +444,9 @@ export default function MatterDetailPage() {
   const handleGenerateBrief = useCallback(
     async (input: { url?: string; text?: string; title?: string; query_id?: string }) => {
       if (!matterId) throw new Error('No active matter');
-      const doc = await generateCaseBrief(matterId, input, user?.id, getAuthToken);
+      const { document } = await generateCaseBrief(matterId, input, user?.id, getAuthToken);
       void refreshActiveMatter();
-      return doc;
+      return document;
     },
     [matterId, user?.id, getAuthToken, refreshActiveMatter],
   );

@@ -13,7 +13,7 @@ import json
 import logging
 import time
 import uuid
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Optional
 
 from fastapi import HTTPException
 
@@ -23,6 +23,7 @@ from app.core.settings import settings
 from app.schemas.query_model import AnswerRequest
 from app.schemas.search_model import LegalSearchResult
 from app.services.citation_formatter import extract_citations, extract_suggested_steps
+from app.services.cloudflare_ai import LlmCallMetrics
 from app.services.language_model import generate_legal_answer
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class AnswerContext:
     answer_id: uuid.UUID
     query_id: uuid.UUID
     thread_id: uuid.UUID
+    user_id: uuid.UUID
     query_text: str
     query_type: str
     search_results: List[LegalSearchResult]
@@ -114,6 +116,7 @@ async def prepare_answer(
         answer_id=pending.id,
         query_id=latest_q.id,
         thread_id=latest_q.thread_id,
+        user_id=user_id,
         query_text=query,
         query_type=latest_q.query_type,
         search_results=search_results,
@@ -130,12 +133,18 @@ async def stream_answer_sse(ctx: AnswerContext) -> AsyncGenerator[str, None]:
     """
     full_text: List[str] = []
     t0 = time.perf_counter()
+    captured_metrics: List[LlmCallMetrics] = []
+
+    def capture(m: LlmCallMetrics) -> None:
+        captured_metrics.append(m)
+
     try:
         for chunk in generate_legal_answer(
             query=ctx.query_text,
             query_type=ctx.query_type,
             search_results=ctx.search_results,
             previous_queries=ctx.previous_queries,
+            on_complete=capture,
         ):
             full_text.append(chunk)
             yield f"data: {json.dumps({'chunk': chunk})}\n\n"
@@ -145,7 +154,10 @@ async def stream_answer_sse(ctx: AnswerContext) -> AsyncGenerator[str, None]:
         suggested_steps = extract_suggested_steps(complete_text)
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        await _finalise(ctx.answer_id, complete_text, latency_ms, citations, suggested_steps)
+        metrics = captured_metrics[0] if captured_metrics else None
+        await _finalise(
+            ctx, complete_text, latency_ms, citations, suggested_steps, metrics,
+        )
 
         yield (
             "data: "
@@ -155,43 +167,97 @@ async def stream_answer_sse(ctx: AnswerContext) -> AsyncGenerator[str, None]:
                 "query_id": str(ctx.query_id),
                 "citations": citations,
                 "suggested_steps": suggested_steps,
+                "metrics": _metrics_payload(metrics, latency_ms),
             })
             + "\n\n"
         )
 
     except Exception as exc:
         logger.error("Streaming error: %s", exc)
-        await _mark_failed(ctx.answer_id, str(exc))
+        metrics = captured_metrics[0] if captured_metrics else None
+        await _mark_failed(ctx, str(exc), metrics)
         yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
 
+def _metrics_payload(
+    metrics: Optional[LlmCallMetrics], outer_latency_ms: int,
+) -> dict:
+    """Shape the metrics dict the FE consumes. `outer_latency_ms` is the
+    wall-clock from the start of streaming through finalise — useful when
+    the LLM-internal latency is unavailable (e.g. CF not configured)."""
+    if metrics is None:
+        return {"latency_ms": outer_latency_ms}
+    return {
+        "model": metrics.model,
+        "latency_ms": metrics.latency_ms,
+        "ttft_ms": metrics.ttft_ms,
+        "input_tokens": metrics.input_tokens,
+        "output_tokens": metrics.output_tokens,
+    }
+
+
 async def _finalise(
-    answer_id: uuid.UUID,
+    ctx: AnswerContext,
     content: str,
     latency_ms: int,
     citations: list,
     suggested_steps: list,
+    metrics: Optional[LlmCallMetrics],
 ) -> None:
     async with AsyncSessionLocal() as db:
         try:
             await repo.finalise_answer(
                 db,
-                answer_id=answer_id,
+                answer_id=ctx.answer_id,
                 content=content,
                 latency_ms=latency_ms,
                 citations=citations,
                 suggested_steps=suggested_steps,
             )
+            if metrics is not None:
+                await repo.record_llm_call(
+                    db,
+                    user_id=ctx.user_id,
+                    call_site="answer",
+                    model=metrics.model,
+                    latency_ms=metrics.latency_ms,
+                    ttft_ms=metrics.ttft_ms,
+                    input_tokens=metrics.input_tokens,
+                    output_tokens=metrics.output_tokens,
+                    status=metrics.status,
+                    query_id=ctx.query_id,
+                    answer_id=ctx.answer_id,
+                    error_class=metrics.error_class,
+                )
             await db.commit()
         except Exception:
             await db.rollback()
             logger.exception("Failed to persist final answer")
 
 
-async def _mark_failed(answer_id: uuid.UUID, error: str) -> None:
+async def _mark_failed(
+    ctx: AnswerContext,
+    error: str,
+    metrics: Optional[LlmCallMetrics],
+) -> None:
     async with AsyncSessionLocal() as db:
         try:
-            await repo.mark_answer_failed(db, answer_id=answer_id, error=error)
+            await repo.mark_answer_failed(db, answer_id=ctx.answer_id, error=error)
+            if metrics is not None:
+                await repo.record_llm_call(
+                    db,
+                    user_id=ctx.user_id,
+                    call_site="answer",
+                    model=metrics.model,
+                    latency_ms=metrics.latency_ms,
+                    ttft_ms=metrics.ttft_ms,
+                    input_tokens=metrics.input_tokens,
+                    output_tokens=metrics.output_tokens,
+                    status=metrics.status,
+                    query_id=ctx.query_id,
+                    answer_id=ctx.answer_id,
+                    error_class=metrics.error_class,
+                )
             await db.commit()
         except Exception:
             await db.rollback()

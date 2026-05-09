@@ -472,3 +472,58 @@ class RateLimit(Base):
         TIMESTAMP(timezone=True), primary_key=True
     )
     count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+
+# ── llm_calls ───────────────────────────────────────────────────────────────
+# Per-call telemetry for every Cloudflare Workers AI invocation. Optional FKs
+# anchor the call to the row it produced — at most one of these is non-null
+# in practice (rewrite → query, answer → answer, brief/draft → document).
+class LlmCall(Base):
+    __tablename__ = "llm_calls"
+    __table_args__ = (
+        CheckConstraint(
+            "call_site IN ('rewrite', 'answer', 'brief', 'draft')",
+            name="llm_calls_call_site_check",
+        ),
+        CheckConstraint(
+            "status IN ('success', 'error', 'timeout')",
+            name="llm_calls_status_check",
+        ),
+        Index("llm_calls_user_recent_idx", "user_id", text("created_at DESC")),
+        Index("llm_calls_call_site_recent_idx", "call_site", text("created_at DESC")),
+        Index(
+            "llm_calls_prompt_hash_idx", "call_site", "prompt_hash",
+            postgresql_where=text("prompt_hash IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    call_site: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    matter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matters.id", ondelete="SET NULL")
+    )
+    query_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("queries.id", ondelete="SET NULL")
+    )
+    document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    answer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("answers.id", ondelete="SET NULL")
+    )
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    ttft_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    input_tokens: Mapped[Optional[int]] = mapped_column(Integer)
+    output_tokens: Mapped[Optional[int]] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    error_class: Mapped[Optional[str]] = mapped_column(Text)
+    prompt_hash: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )

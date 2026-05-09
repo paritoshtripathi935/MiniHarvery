@@ -16,6 +16,7 @@ from typing import Optional, TypedDict
 
 from app.core.settings import settings
 from app.services import cloudflare_ai
+from app.services.cloudflare_ai import OnComplete
 from app.services.content_extractor import fetch_content_from_url
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,10 @@ def _empty_brief(source_url: Optional[str]) -> CaseBrief:
 
 
 def generate_case_brief(
-    text: str, *, source_url: Optional[str] = None
+    text: str,
+    *,
+    source_url: Optional[str] = None,
+    on_complete: Optional[OnComplete] = None,
 ) -> CaseBrief:
     """Call Cloudflare AI with the structured prompt and return a CaseBrief.
     Raises ValueError on missing config or unparsable response."""
@@ -124,6 +128,7 @@ def generate_case_brief(
             max_tokens=1500,
             temperature=0.2,
             timeout=60,
+            on_complete=on_complete,
         )
     except cloudflare_ai.CloudflareAIError as exc:
         raise ValueError(str(exc)) from exc
