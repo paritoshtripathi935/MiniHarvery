@@ -10,7 +10,12 @@ python-jose[cryptography]
 httpx
 
 # Database (Neon Postgres)
+# Runtime uses asyncpg via SQLAlchemy's async API. Alembic uses sync
+# SQLAlchemy (create_engine), which defaults to the psycopg2 driver —
+# so psycopg2-binary is required at deploy time too. Migrations only;
+# the app never imports it directly.
 sqlalchemy[asyncio]>=2.0
 asyncpg>=0.29
+psycopg2-binary>=2.9
 alembic>=1.13
 greenlet>=3.0
