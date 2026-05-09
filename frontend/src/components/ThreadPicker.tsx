@@ -17,7 +17,7 @@
  *   - Esc closes
  *   - "/" while focused opens the picker
  */
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useRef, useState, type KeyboardEvent } from 'react';
 import {
   ChevronDown,
   MessageSquareText,
@@ -25,6 +25,7 @@ import {
   Search,
 } from 'lucide-react';
 import type { Message } from '../types';
+import { useDismissable } from '../hooks/useDismissable';
 import { t } from '../design/tokens';
 
 interface Thread {
@@ -85,27 +86,17 @@ export default function ThreadPicker({
   const [cursor, setCursor] = useState(0);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        close();
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  const close = useCallback(() => {
+    setOpen(false);
+    setFilter('');
+    setCursor(0);
+  }, []);
+
+  useDismissable(wrapRef, open, close);
 
   const visible = threads.filter(t_ =>
     t_.title.toLowerCase().includes(filter.toLowerCase()),
   );
-
-  const close = () => {
-    setOpen(false);
-    setFilter('');
-    setCursor(0);
-  };
 
   const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
