@@ -328,4 +328,39 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 CREATE INDEX IF NOT EXISTS rate_limits_window_idx
     ON rate_limits (window_start);
 
+
+-- llm_calls: per-call telemetry for every Cloudflare Workers AI invocation.
+-- Optional FKs anchor a call to the artefact it produced (matter / query /
+-- document / answer). Used to inform a future caching layer; we want to know
+-- which prompts repeat before we know what's worth caching.
+CREATE TABLE IF NOT EXISTS llm_calls (
+    id              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         uuid         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    call_site       text         NOT NULL,
+    model           text         NOT NULL,
+    matter_id       uuid         REFERENCES matters(id) ON DELETE SET NULL,
+    query_id        uuid         REFERENCES queries(id) ON DELETE SET NULL,
+    document_id     uuid         REFERENCES documents(id) ON DELETE SET NULL,
+    answer_id       uuid         REFERENCES answers(id) ON DELETE SET NULL,
+    latency_ms      integer      NOT NULL,
+    ttft_ms         integer,
+    input_tokens    integer,
+    output_tokens   integer,
+    status          text         NOT NULL,
+    error_class     text,
+    prompt_hash     text,
+    created_at      timestamptz  NOT NULL DEFAULT now(),
+    CONSTRAINT llm_calls_call_site_check CHECK (call_site IN ('rewrite', 'answer', 'brief', 'draft')),
+    CONSTRAINT llm_calls_status_check    CHECK (status    IN ('success', 'error', 'timeout'))
+);
+
+CREATE INDEX IF NOT EXISTS llm_calls_user_recent_idx
+    ON llm_calls (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS llm_calls_call_site_recent_idx
+    ON llm_calls (call_site, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS llm_calls_prompt_hash_idx
+    ON llm_calls (call_site, prompt_hash) WHERE prompt_hash IS NOT NULL;
+
 COMMIT;

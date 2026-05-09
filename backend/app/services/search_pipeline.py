@@ -46,7 +46,7 @@ async def run_search(
     logger.info("Search [thread=%s] query='%s'", body.thread_id, query)
 
     query_type = classify_query(query)
-    search_query = rewrite_query_for_search(query)
+    search_query, rewrite_metrics = rewrite_query_for_search(query)
 
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -74,6 +74,22 @@ async def run_search(
             )
             await repo.bulk_insert_search_results(db, q.id, results)
             await repo.bulk_insert_videos(db, q.id, videos)
+
+            if rewrite_metrics is not None:
+                await repo.record_llm_call(
+                    db,
+                    user_id=user_id,
+                    call_site="rewrite",
+                    model=rewrite_metrics.model,
+                    latency_ms=rewrite_metrics.latency_ms,
+                    status=rewrite_metrics.status,
+                    matter_id=body.matter_id,
+                    query_id=q.id,
+                    input_tokens=rewrite_metrics.input_tokens,
+                    output_tokens=rewrite_metrics.output_tokens,
+                    error_class=rewrite_metrics.error_class,
+                )
+
             await db.commit()
         except HTTPException:
             await db.rollback()

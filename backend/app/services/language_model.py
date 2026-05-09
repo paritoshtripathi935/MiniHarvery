@@ -5,13 +5,14 @@ Pure prompt engineering — HTTP plumbing lives in `cloudflare_ai`.
 from __future__ import annotations
 
 import logging
-from typing import Generator, List
+from typing import Generator, List, Optional, Tuple
 
 import requests
 
 from app.core.settings import settings
 from app.schemas.search_model import LegalSearchResult
 from app.services import cloudflare_ai
+from app.services.cloudflare_ai import LlmCallMetrics, OnComplete
 
 logger = logging.getLogger(__name__)
 
@@ -111,38 +112,51 @@ Answer the query using the search results above. Follow the required structure s
     ]
 
 
-def rewrite_query_for_search(raw_query: str) -> str:
+def rewrite_query_for_search(raw_query: str) -> Tuple[str, Optional[LlmCallMetrics]]:
     """Rewrite a natural-language question into a focused legal search query.
+
+    Returns `(rewritten_query, metrics_or_None)`. Metrics is None when no
+    LLM call happened (Cloudflare not configured, or the rewrite was
+    rejected after the call and we returned the raw query — the metrics
+    object still describes the call we made and is the second return).
 
     Falls back to the raw query on any failure — searching must never be
     blocked by the rewrite step.
     """
     if not cloudflare_ai.is_configured():
-        return raw_query
+        return raw_query, None
 
     messages = [
         {"role": "system", "content": _REWRITE_SYSTEM},
         {"role": "user", "content": raw_query},
     ]
+
+    captured: List[LlmCallMetrics] = []
+
+    def capture(m: LlmCallMetrics) -> None:
+        captured.append(m)
+
     try:
         rewritten = cloudflare_ai.chat_completion(
             messages,
             model=settings.CLOUDFLARE_LLM_MODEL_REWRITE,
             max_tokens=64,
             timeout=8,
+            on_complete=capture,
         )
     except Exception as exc:
         logger.warning("Query rewrite failed, using raw query: %s", exc)
-        return raw_query
+        return raw_query, captured[0] if captured else None
 
+    metrics = captured[0] if captured else None
     rewritten = " ".join(rewritten.strip("\"'` \n\t").split())
     if not rewritten or len(rewritten) < 3 or len(rewritten) > 200:
-        return raw_query
+        return raw_query, metrics
     if rewritten.lower().startswith(("i cannot", "i can't", "sorry")):
-        return raw_query
+        return raw_query, metrics
 
     logger.info("Query rewrite: '%s' → '%s'", raw_query, rewritten)
-    return rewritten
+    return rewritten, metrics
 
 
 def generate_legal_answer(
@@ -150,8 +164,14 @@ def generate_legal_answer(
     query_type: str,
     search_results: List[LegalSearchResult],
     previous_queries: List[str],
+    *,
+    on_complete: Optional[OnComplete] = None,
 ) -> Generator[str, None, None]:
-    """Stream the legal answer chunk-by-chunk (SSE-friendly)."""
+    """Stream the legal answer chunk-by-chunk (SSE-friendly).
+
+    Optional `on_complete` is invoked once after the stream ends with the
+    call's latency, ttft, and (if Cloudflare reports them) token counts.
+    """
     if not cloudflare_ai.is_configured():
         yield "Cloudflare AI is not configured. Please set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
         return
@@ -164,6 +184,7 @@ def generate_legal_answer(
             model=settings.CLOUDFLARE_LLM_MODEL_ANSWER,
             max_tokens=2048,
             timeout=90,
+            on_complete=on_complete,
         )
     except requests.exceptions.Timeout:
         logger.error("Cloudflare AI request timed out")

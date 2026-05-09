@@ -11,11 +11,12 @@ extractive briefs) and a higher max_tokens budget (drafts run long).
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.core.settings import settings
 from app.schemas.draft_model import DraftTemplate
 from app.services import cloudflare_ai
+from app.services.cloudflare_ai import OnComplete
 from app.services.pleading_templates import get_prompts
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,7 @@ def generate_pleading_draft(
     fields: Dict[str, Any],
     *,
     parties_block: str = "",
+    on_complete: Optional[OnComplete] = None,
 ) -> str:
     """Run the LLM and return the generated Markdown."""
     if not cloudflare_ai.is_configured():
@@ -124,6 +126,7 @@ def generate_pleading_draft(
             max_tokens=_DRAFT_MAX_TOKENS,
             temperature=_DRAFT_TEMPERATURE,
             timeout=_DRAFT_TIMEOUT,
+            on_complete=on_complete,
         )
     except cloudflare_ai.CloudflareAIError as exc:
         raise ValueError(str(exc)) from exc

@@ -31,6 +31,7 @@ from app.services.case_brief_generator import (
     fetch_case_text,
     generate_case_brief,
 )
+from app.services.cloudflare_ai import LlmCallMetrics
 from app.services.pleading_draft_generator import (
     DraftValidationError,
     format_parties_block,
@@ -57,6 +58,19 @@ class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[Dict[str, Any]] = Field(default=None)
     status: Optional[str] = None
+
+
+def _metrics_payload(metrics: Optional[LlmCallMetrics]) -> Optional[Dict[str, Any]]:
+    """Shape the FE-facing metrics dict. None when no LLM call occurred
+    (configuration off, fallback path, etc.) — callers omit the field."""
+    if metrics is None:
+        return None
+    return {
+        "model": metrics.model,
+        "latency_ms": metrics.latency_ms,
+        "input_tokens": metrics.input_tokens,
+        "output_tokens": metrics.output_tokens,
+    }
 
 
 # ── POST /matters/{matter_id}/case-briefs ────────────────────────────────────
@@ -91,13 +105,19 @@ async def create_case_brief(
             detail="Could not extract any text from the URL — paste the judgment text directly.",
         )
 
+    captured: list[LlmCallMetrics] = []
+
+    def capture(m: LlmCallMetrics) -> None:
+        captured.append(m)
+
     try:
-        brief = generate_case_brief(text, source_url=source_url)
+        brief = generate_case_brief(text, source_url=source_url, on_complete=capture)
     except ValueError as exc:
         logger.warning("Case brief generation refused: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
 
     title = body.title or derive_brief_title(brief)
+    metrics = captured[0] if captured else None
 
     async with AsyncSessionLocal() as db:
         try:
@@ -112,13 +132,32 @@ async def create_case_brief(
                 source_query_id=body.query_id,
                 status="draft",
             )
+            if metrics is not None:
+                await repo.record_llm_call(
+                    db,
+                    user_id=caller.user_id,
+                    call_site="brief",
+                    model=metrics.model,
+                    latency_ms=metrics.latency_ms,
+                    input_tokens=metrics.input_tokens,
+                    output_tokens=metrics.output_tokens,
+                    status=metrics.status,
+                    matter_id=matter_id,
+                    query_id=body.query_id,
+                    document_id=doc.id,
+                    error_class=metrics.error_class,
+                )
             await db.commit()
         except Exception:
             await db.rollback()
             logger.exception("Failed to persist case brief")
             raise HTTPException(status_code=500, detail="Failed to save brief")
 
-    return {"data": repo.document_to_dict(doc), "status": "success"}
+    return {
+        "data": repo.document_to_dict(doc),
+        "metrics": _metrics_payload(metrics),
+        "status": "success",
+    }
 
 
 # ── GET /draft-templates ─────────────────────────────────────────────────────
@@ -157,9 +196,14 @@ async def create_pleading_draft(
 
     parties_block = format_parties_block(matter_full.get("parties") or [])
 
+    captured: list[LlmCallMetrics] = []
+
+    def capture(m: LlmCallMetrics) -> None:
+        captured.append(m)
+
     try:
         markdown = generate_pleading_draft(
-            template, body.fields, parties_block=parties_block
+            template, body.fields, parties_block=parties_block, on_complete=capture,
         )
     except DraftValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -174,6 +218,7 @@ async def create_pleading_draft(
         "markdown": markdown,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    metrics = captured[0] if captured else None
 
     async with AsyncSessionLocal() as db:
         try:
@@ -188,13 +233,32 @@ async def create_pleading_draft(
                 source_query_id=body.query_id,
                 status="draft",
             )
+            if metrics is not None:
+                await repo.record_llm_call(
+                    db,
+                    user_id=caller.user_id,
+                    call_site="draft",
+                    model=metrics.model,
+                    latency_ms=metrics.latency_ms,
+                    input_tokens=metrics.input_tokens,
+                    output_tokens=metrics.output_tokens,
+                    status=metrics.status,
+                    matter_id=matter_id,
+                    query_id=body.query_id,
+                    document_id=doc.id,
+                    error_class=metrics.error_class,
+                )
             await db.commit()
         except Exception:
             await db.rollback()
             logger.exception("Failed to persist pleading draft")
             raise HTTPException(status_code=500, detail="Failed to save draft")
 
-    return {"data": repo.document_to_dict(doc), "status": "success"}
+    return {
+        "data": repo.document_to_dict(doc),
+        "metrics": _metrics_payload(metrics),
+        "status": "success",
+    }
 
 
 # ── GET /documents/{id} ──────────────────────────────────────────────────────

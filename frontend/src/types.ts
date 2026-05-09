@@ -48,6 +48,23 @@ export interface LegalAnswer {
   citations: Citation[];
   suggested_steps: string[];
   query_type: QueryType;
+  /** Set when the SSE done payload included `metrics` (post-deploy of
+   *  the LLM-telemetry feature). Older threads loaded from history will
+   *  not have this set. */
+  metrics?: LlmCallMetrics;
+}
+
+/** Per-call telemetry the FE shows in the chat footer / doc header.
+ *  Mirrors the Python `LlmCallMetrics` dataclass. */
+export interface LlmCallMetrics {
+  /** Cloudflare slug — only set when the call actually reached CF. */
+  model?: string;
+  /** Wall-clock latency in ms. Always set. */
+  latency_ms: number;
+  /** Time-to-first-token in ms. Streaming calls only. */
+  ttft_ms?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
 }
 
 // ── User mode (Vidhi segment) ─────────────────────────────────────────────

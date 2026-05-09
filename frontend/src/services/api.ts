@@ -12,6 +12,7 @@ import type {
   DocumentRecord,
   DraftTemplate,
   LegalSearchResult,
+  LlmCallMetrics,
   MatterDetail,
   MatterSummary,
   Party,
@@ -89,7 +90,11 @@ export async function getLegalAnswer(
   queryId: string | undefined,
   threadId: string | undefined,
   onChunk: (chunk: string) => void,
-  onDone: (citations: Citation[], suggested_steps: string[]) => void,
+  onDone: (
+    citations: Citation[],
+    suggested_steps: string[],
+    metrics?: LlmCallMetrics,
+  ) => void,
   onError: (message: string) => void,
   userId?: string,
   getToken?: GetToken,
@@ -133,7 +138,11 @@ export async function getLegalAnswer(
         if (payload.chunk) {
           onChunk(payload.chunk);
         } else if (payload.done) {
-          onDone(payload.citations ?? [], payload.suggested_steps ?? []);
+          onDone(
+            payload.citations ?? [],
+            payload.suggested_steps ?? [],
+            payload.metrics,
+          );
         } else if (payload.error) {
           onError(payload.error);
         }
@@ -341,12 +350,17 @@ export interface GenerateCaseBriefInput {
   query_id?: string;
 }
 
+export interface GeneratedCaseBrief {
+  document: CaseBriefDocument;
+  metrics?: LlmCallMetrics;
+}
+
 export async function generateCaseBrief(
   matterId: string,
   input: GenerateCaseBriefInput,
   userId?: string,
   getToken?: GetToken,
-): Promise<CaseBriefDocument> {
+): Promise<GeneratedCaseBrief> {
   const response = await fetch(
     `${BASE_URL}/api/v1/matters/${matterId}/case-briefs`,
     {
@@ -359,7 +373,8 @@ export async function generateCaseBrief(
     const err = await response.json().catch(() => ({}));
     throw new Error(err?.detail ?? `Failed to generate brief (${response.status})`);
   }
-  return (await response.json()).data;
+  const json = await response.json();
+  return { document: json.data, metrics: json.metrics ?? undefined };
 }
 
 export async function getDocument(
@@ -435,12 +450,17 @@ export interface GeneratePleadingDraftInput {
   query_id?: string;
 }
 
+export interface GeneratedPleadingDraft {
+  document: PleadingDraftDocument;
+  metrics?: LlmCallMetrics;
+}
+
 export async function generatePleadingDraft(
   matterId: string,
   input: GeneratePleadingDraftInput,
   userId?: string,
   getToken?: GetToken,
-): Promise<PleadingDraftDocument> {
+): Promise<GeneratedPleadingDraft> {
   const response = await fetch(
     `${BASE_URL}/api/v1/matters/${matterId}/drafts`,
     {
@@ -453,5 +473,6 @@ export async function generatePleadingDraft(
     const err = await response.json().catch(() => ({}));
     throw new Error(err?.detail ?? `Failed to generate draft (${response.status})`);
   }
-  return (await response.json()).data;
+  const json = await response.json();
+  return { document: json.data, metrics: json.metrics ?? undefined };
 }

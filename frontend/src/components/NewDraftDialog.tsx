@@ -168,8 +168,10 @@ export default function NewDraftDialog({
         template_id: selected.id,
         fields: values,
       };
-      const doc = await generatePleadingDraft(targetMatter, input, user?.id, () => getToken());
-      onCreated(doc);
+      const { document } = await generatePleadingDraft(
+        targetMatter, input, user?.id, () => getToken(),
+      );
+      onCreated(document);
     } catch (err) {
       setSubmitError(
         err instanceof Error ? err.message : 'Draft generation failed.',
