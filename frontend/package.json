@@ -12,14 +12,12 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.61.5",
     "@tailwindcss/vite": "^4.2.2",
-    "@types/react-syntax-highlighter": "^15.5.13",
     "@types/uuid": "^10.0.0",
     "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.15.0",
-    "react-syntax-highlighter": "^16.1.1",
     "tailwindcss": "^4.2.2",
     "uuid": "^13.0.0"
   },

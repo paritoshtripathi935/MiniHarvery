@@ -233,19 +233,6 @@ export async function deleteAllThreads(
   }
 }
 
-// ── Session (legacy single-session delete; kept but unused by App) ───────
-
-export async function clearSession(
-  sessionId: string,
-  userId?: string,
-  getToken?: GetToken,
-): Promise<void> {
-  await fetch(`${BASE_URL}/api/v1/session/${sessionId}`, {
-    method: 'DELETE',
-    headers: await buildHeaders(userId, getToken),
-  });
-}
-
 // ── Matters ──────────────────────────────────────────────────────────────
 
 export async function listMatters(
