@@ -1,40 +1,96 @@
 /**
- * Today — the landing route.
+ * Today — the landing route, doubling as the discoverability surface.
  *
- * Answers one question for an associate first thing in the morning:
- * "what should I look at right now?" Today shows recent matters
- * (sorted by activity) and a single primary CTA to start fresh research
- * inside Inbox.
+ * Sections, top to bottom:
+ *   1. Greeting.
+ *   2. Quick actions row — New matter, New draft (no matter required),
+ *      Quick research in Inbox.
+ *   3. Templates gallery — every drafting template surfaced as a clickable
+ *      card so the user *sees* what Vidhi can do without burrowing into
+ *      a matter's Documents tab first.
+ *   4. Recent matters.
  *
- * Designed-not-vibecoded principles applied:
- *  - One H1, one secondary section, no kitchen sink. Hearings + drafts-due
- *    widgets are intentionally NOT here — we don't have the data yet, and
- *    placeholders are worse than absence.
- *  - Empty state is real copy, not a "no matters yet" stare.
- *  - Recent matters truncate to 6; a "View all" link routes to /matters
- *    when there are more.
+ * Two design rules at work:
+ *   - Saffron only for decisions: the New matter CTA is accent; templates
+ *     are surface-on-surface; secondary actions are bordered.
+ *   - No placeholder widgets. "Hearings this week" / "Drafts due today"
+ *     are real ideas but we don't have the data — empty placeholders are
+ *     worse than absence.
  */
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  FilePlus,
+  FileText,
+  Gavel,
+  Scale,
+  Send,
+  Sparkles,
+} from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import { useMatters } from '../state/MattersContext';
 import MatterCard from '../components/MatterCard';
 import NewMatterButton from '../components/NewMatterButton';
+import NewDraftDialog from '../components/NewDraftDialog';
 import { Breadcrumbs, Crumb } from '../layout/Breadcrumbs';
 import { t } from '../design/tokens';
 
 const PREVIEW_LIMIT = 6;
+
+interface TemplateCard {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ size?: number }>;
+}
+
+// Mirror the backend's four templates. We don't fetch /draft-templates
+// here on render — that would block the home page on a network call. The
+// dialog itself fetches and is the source of truth for field schemas;
+// these cards are just discoverability copy.
+const TEMPLATE_CARDS: TemplateCard[] = [
+  {
+    id: 'plaint',
+    label: 'Plaint',
+    description: 'CPC O.VII — initiate a civil suit.',
+    icon: Scale,
+  },
+  {
+    id: 'writ_226',
+    label: 'Writ Petition',
+    description: 'Article 226 — fundamental rights, illegal state action.',
+    icon: Gavel,
+  },
+  {
+    id: 'anticipatory_bail',
+    label: 'Anticipatory Bail',
+    description: 'CrPC s.438 — pre-arrest bail application.',
+    icon: FileText,
+  },
+  {
+    id: 'legal_notice',
+    label: 'Legal Notice',
+    description: 'Pre-litigation correspondence with a stated demand.',
+    icon: Send,
+  },
+];
 
 export default function TodayPage() {
   const { matters, loaded, inboxMatter } = useMatters();
   const { user } = useUser();
   const navigate = useNavigate();
 
-  const recent = matters
-    .filter(m => !m.is_inbox)
-    .slice(0, PREVIEW_LIMIT);
+  const [draftDialog, setDraftDialog] = useState<
+    { open: false } | { open: true; templateId?: string }
+  >({ open: false });
 
+  const recent = matters.filter(m => !m.is_inbox).slice(0, PREVIEW_LIMIT);
   const greeting = greetingFor(new Date(), user?.firstName ?? user?.fullName ?? null);
+
+  const openDraftDialog = (templateId?: string) =>
+    setDraftDialog({ open: true, templateId });
+  const closeDraftDialog = () => setDraftDialog({ open: false });
 
   return (
     <div
@@ -52,7 +108,12 @@ export default function TodayPage() {
           <EmptyState />
         ) : (
           <>
-            <PrimaryActions inboxId={inboxMatter?.id ?? null} onCreated={(id) => navigate(`/matters/${id}`)} />
+            <QuickActions
+              inboxId={inboxMatter?.id ?? null}
+              onCreated={id => navigate(`/matters/${id}`)}
+              onNewDraft={() => openDraftDialog()}
+            />
+            <TemplatesGallery onChoose={tplId => openDraftDialog(tplId)} />
             {recent.length > 0 && (
               <RecentMattersSection
                 matters={recent}
@@ -62,6 +123,16 @@ export default function TodayPage() {
           </>
         )}
       </div>
+
+      <NewDraftDialog
+        open={draftDialog.open}
+        seedTemplateId={draftDialog.open ? draftDialog.templateId : undefined}
+        onClose={closeDraftDialog}
+        onCreated={doc => {
+          closeDraftDialog();
+          navigate(`/matters/${doc.matter_id}/documents/${doc.id}`);
+        }}
+      />
     </div>
   );
 }
@@ -165,19 +236,45 @@ function EmptyState() {
   );
 }
 
-function PrimaryActions({
+function QuickActions({
   inboxId,
   onCreated,
+  onNewDraft,
 }: {
   inboxId: string | null;
   onCreated: (id: string) => void;
+  onNewDraft: () => void;
 }) {
   return (
     <div
       className="flex items-center"
-      style={{ gap: t.space.sm, marginBottom: t.space.lg }}
+      style={{ gap: t.space.sm, marginBottom: t.space.lg, flexWrap: 'wrap' }}
     >
       <NewMatterButton variant="primary" onCreated={onCreated} />
+      <button
+        onClick={onNewDraft}
+        className="inline-flex items-center cursor-pointer"
+        style={{
+          gap: t.space.xs,
+          padding: `${t.space.sm} ${t.space.md}`,
+          fontSize: t.size.ui,
+          fontWeight: t.weight.medium,
+          color: t.color.text,
+          backgroundColor: 'transparent',
+          border: `1px solid ${t.color.border}`,
+          borderRadius: t.radius.md,
+          transition: t.motion.fast,
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.borderColor = t.color.accent;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.borderColor = t.color.border;
+        }}
+      >
+        <FilePlus size={13} />
+        New draft
+      </button>
       {inboxId && (
         <Link
           to={`/matters/${inboxId}`}
@@ -200,6 +297,85 @@ function PrimaryActions({
   );
 }
 
+function TemplatesGallery({
+  onChoose,
+}: {
+  onChoose: (templateId: string) => void;
+}) {
+  return (
+    <section style={{ marginBottom: t.space.lg }}>
+      <SectionHeader
+        eyebrow="Drafting templates"
+        hint="Click a template to start a draft. The dialog asks which matter to save it under."
+      />
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: t.space.sm,
+        }}
+      >
+        {TEMPLATE_CARDS.map(tpl => {
+          const Icon = tpl.icon;
+          return (
+            <button
+              key={tpl.id}
+              onClick={() => onChoose(tpl.id)}
+              className="cursor-pointer text-left border-0"
+              style={{
+                padding: t.space.md,
+                backgroundColor: t.color.surface,
+                border: `1px solid ${t.color.border}`,
+                borderRadius: t.radius.md,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: t.space.xs,
+                minHeight: '100px',
+                transition: t.motion.fast,
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = t.color.accent;
+                e.currentTarget.style.backgroundColor = t.color.hover;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = t.color.border;
+                e.currentTarget.style.backgroundColor = t.color.surface;
+              }}
+            >
+              <span
+                className="inline-flex items-center"
+                style={{ gap: t.space.xs }}
+              >
+                <Icon size={14} />
+                <span
+                  className="serif"
+                  style={{
+                    fontSize: t.size.body,
+                    fontWeight: t.weight.semibold,
+                    color: t.color.text,
+                  }}
+                >
+                  {tpl.label}
+                </span>
+              </span>
+              <p
+                className="m-0"
+                style={{
+                  fontSize: t.size.ui,
+                  color: t.color.muted,
+                  lineHeight: 1.45,
+                }}
+              >
+                {tpl.description}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function RecentMattersSection({
   matters,
   hasMore,
@@ -209,36 +385,24 @@ function RecentMattersSection({
 }) {
   return (
     <section style={{ marginTop: t.space.lg }}>
-      <div
-        className="flex items-baseline justify-between"
-        style={{ marginBottom: t.space.md }}
-      >
-        <h2
-          className="m-0"
-          style={{
-            fontSize: t.size.ui,
-            fontWeight: t.weight.semibold,
-            color: t.color.muted,
-            textTransform: 'uppercase',
-            letterSpacing: '0.12em',
-          }}
-        >
-          Recent matters
-        </h2>
-        {hasMore && (
-          <Link
-            to="/matters"
-            className="no-underline"
-            style={{
-              fontSize: t.size.ui,
-              color: t.color.accent,
-              fontWeight: t.weight.medium,
-            }}
-          >
-            View all →
-          </Link>
-        )}
-      </div>
+      <SectionHeader
+        eyebrow="Recent matters"
+        action={
+          hasMore ? (
+            <Link
+              to="/matters"
+              className="no-underline"
+              style={{
+                fontSize: t.size.ui,
+                color: t.color.accent,
+                fontWeight: t.weight.medium,
+              }}
+            >
+              View all →
+            </Link>
+          ) : null
+        }
+      />
       <div
         className="grid"
         style={{
@@ -251,5 +415,50 @@ function RecentMattersSection({
         ))}
       </div>
     </section>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  hint,
+  action,
+}: {
+  eyebrow: string;
+  hint?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-baseline justify-between"
+      style={{ marginBottom: t.space.md, gap: t.space.md }}
+    >
+      <div>
+        <h2
+          className="m-0"
+          style={{
+            fontSize: t.size.ui,
+            fontWeight: t.weight.semibold,
+            color: t.color.muted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+          }}
+        >
+          {eyebrow}
+        </h2>
+        {hint && (
+          <p
+            className="m-0"
+            style={{
+              fontSize: t.size.micro,
+              color: t.color.dim,
+              marginTop: '2px',
+            }}
+          >
+            {hint}
+          </p>
+        )}
+      </div>
+      {action}
+    </div>
   );
 }

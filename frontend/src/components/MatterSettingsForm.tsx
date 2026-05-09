@@ -13,7 +13,8 @@
  * and status are locked because the backend treats Inbox as a sentinel.
  */
 import { useEffect, useState } from 'react';
-import { Loader2, Inbox } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, Inbox, Trash2 } from 'lucide-react';
 import type { MatterDetail, Party } from '../types';
 import type { UpdateMatterInput } from '../services/api';
 import { useMatters } from '../state/MattersContext';
@@ -79,10 +80,12 @@ interface Props {
 }
 
 export default function MatterSettingsForm({ matter, onUpdated }: Props) {
-  const { updateMatter } = useMatters();
+  const navigate = useNavigate();
+  const { updateMatter, removeMatter } = useMatters();
   const [form, setForm] = useState<FormState>(() => fromDetail(matter));
   const [committed, setCommitted] = useState<FormState>(() => fromDetail(matter));
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [deleting, setDeleting] = useState(false);
 
   // Reset state only when the user navigates to a different matter. While
   // editing the same matter, ignore prop updates (they may be the result
@@ -200,8 +203,124 @@ export default function MatterSettingsForm({ matter, onUpdated }: Props) {
             />
           </Field>
         )}
+
+        {!isInbox && (
+          <DangerZone
+            matterTitle={matter.title}
+            busy={deleting}
+            onDelete={async () => {
+              const ok = window.confirm(
+                `Delete "${matter.title}"?\n\nThis soft-deletes the matter, its threads, queries, briefs, and drafts. The data stays on the server (analytics) but disappears from your view. There is no undo from the UI.`,
+              );
+              if (!ok) return;
+              setDeleting(true);
+              try {
+                await removeMatter(matter.id);
+                navigate('/matters');
+              } catch (e: unknown) {
+                setDeleting(false);
+                window.alert(
+                  e instanceof Error
+                    ? e.message
+                    : 'Could not delete matter. Try again.',
+                );
+              }
+            }}
+          />
+        )}
       </div>
     </main>
+  );
+}
+
+function DangerZone({
+  matterTitle,
+  busy,
+  onDelete,
+}: {
+  matterTitle: string;
+  busy: boolean;
+  onDelete: () => void;
+}) {
+  return (
+    <section
+      style={{
+        marginTop: t.space.xl,
+        padding: t.space.md,
+        border: `1px solid ${t.color.border}`,
+        borderRadius: t.radius.md,
+      }}
+    >
+      <h3
+        className="m-0"
+        style={{
+          fontSize: t.size.micro,
+          fontWeight: t.weight.semibold,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          color: t.color.muted,
+        }}
+      >
+        Danger zone
+      </h3>
+      <div
+        className="flex items-center justify-between"
+        style={{ gap: t.space.md, marginTop: t.space.sm }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            className="m-0"
+            style={{
+              fontSize: t.size.body,
+              fontWeight: t.weight.medium,
+              color: t.color.text,
+            }}
+          >
+            Delete this matter
+          </p>
+          <p
+            className="m-0"
+            style={{
+              fontSize: t.size.ui,
+              color: t.color.muted,
+              marginTop: '2px',
+            }}
+          >
+            Removes &ldquo;{matterTitle}&rdquo; and everything inside it from
+            your view. Soft-delete; data is preserved server-side.
+          </p>
+        </div>
+        <button
+          onClick={onDelete}
+          disabled={busy}
+          className="cursor-pointer inline-flex items-center disabled:cursor-not-allowed"
+          style={{
+            gap: t.space.xs,
+            padding: `${t.space.sm} ${t.space.md}`,
+            fontSize: t.size.ui,
+            fontWeight: t.weight.semibold,
+            color: t.color.danger,
+            backgroundColor: 'transparent',
+            border: `1px solid ${t.color.danger}`,
+            borderRadius: t.radius.sm,
+            transition: t.motion.fast,
+          }}
+          onMouseEnter={e => {
+            if (!busy) {
+              e.currentTarget.style.backgroundColor = t.color.danger;
+              e.currentTarget.style.color = t.color.bg;
+            }
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.color = t.color.danger;
+          }}
+        >
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+          {busy ? 'Deleting…' : 'Delete matter'}
+        </button>
+      </div>
+    </section>
   );
 }
 
