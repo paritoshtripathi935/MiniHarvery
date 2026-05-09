@@ -10,10 +10,12 @@ import type {
   CaseBriefDocument,
   Citation,
   DocumentRecord,
+  DraftTemplate,
   LegalSearchResult,
   MatterDetail,
   MatterSummary,
   Party,
+  PleadingDraftDocument,
   ThreadSummary,
   VideoResult,
 } from '../types';
@@ -407,4 +409,49 @@ export async function deleteDocument(
     const err = await response.json().catch(() => ({}));
     throw new Error(err?.detail ?? `Failed to delete document (${response.status})`);
   }
+}
+
+// ── Drafting workshop ────────────────────────────────────────────────────
+
+export async function listDraftTemplates(
+  userId?: string,
+  getToken?: GetToken,
+): Promise<DraftTemplate[]> {
+  const response = await fetch(`${BASE_URL}/api/v1/draft-templates`, {
+    method: 'GET',
+    headers: await buildHeaders(userId, getToken),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to load templates (${response.status})`);
+  }
+  return (await response.json()).data.templates;
+}
+
+export interface GeneratePleadingDraftInput {
+  template_id: string;
+  title?: string;
+  fields: Record<string, unknown>;
+  query_id?: string;
+}
+
+export async function generatePleadingDraft(
+  matterId: string,
+  input: GeneratePleadingDraftInput,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<PleadingDraftDocument> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/matters/${matterId}/drafts`,
+    {
+      method: 'POST',
+      headers: await buildHeaders(userId, getToken),
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to generate draft (${response.status})`);
+  }
+  return (await response.json()).data;
 }

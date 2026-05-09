@@ -119,9 +119,40 @@ export interface CaseBriefDocument extends DocumentBase {
   content: CaseBriefContent;
 }
 
+/** Stored content for a generated pleading draft. Mirrors the Python
+ * shape persisted by `pleading_draft_generator`. `fields` is kept so a
+ * later "regenerate" flow can repopulate the dialog without having to
+ * store the inputs anywhere else. */
+export interface PleadingDraftContent {
+  template_id: string;
+  fields: Record<string, unknown>;
+  markdown: string;
+  generated_at: string;
+}
+
 export interface PleadingDraftDocument extends DocumentBase {
   type: 'pleading_draft';
-  content: Record<string, unknown>;
+  content: PleadingDraftContent;
+}
+
+// ── Draft templates (drafting workshop) ──────────────────────────────────
+
+export type DraftFieldType = 'text' | 'textarea' | 'list';
+
+export interface DraftField {
+  id: string;
+  label: string;
+  type: DraftFieldType;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+}
+
+export interface DraftTemplate {
+  id: string;
+  label: string;
+  description: string;
+  fields: DraftField[];
 }
 
 export interface AuthoritiesTableDocument extends DocumentBase {

@@ -1,19 +1,21 @@
 """Document endpoints — case briefs, pleading drafts, authorities tables, notes.
 
 POST   /matters/{matter_id}/case-briefs   — generate + persist a case brief
+POST   /matters/{matter_id}/drafts        — generate + persist a pleading draft
+GET    /draft-templates                   — list available draft templates
 GET    /documents/{id}                    — fetch a document
 PATCH  /documents/{id}                    — edit title / content / status
 DELETE /documents/{id}                    — soft-delete
 
-Case-brief generation is the only LLM-backed endpoint here; the others are
-CRUD over the polymorphic `documents` table. The brief endpoint manages its
-own DB sessions because the LLM call sits between two DB calls and we don't
-want to hold a pool connection over a 30 s round trip.
+Generation endpoints manage their own DB sessions because the LLM call
+sits between two DB calls and we don't want to hold a pool connection
+over a 30+ second round trip.
 """
 from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,11 +25,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import CallerIdentity, resolve_caller
 from app.db import AsyncSessionLocal, get_session
 from app.db import repositories as repo
+from app.schemas.draft_model import GenerateDraftRequest
 from app.services.case_brief_generator import (
     derive_brief_title,
     fetch_case_text,
     generate_case_brief,
 )
+from app.services.pleading_draft_generator import (
+    DraftValidationError,
+    format_parties_block,
+    generate_pleading_draft,
+)
+from app.services.pleading_templates import get_template, list_templates
 from app.core.rate_limiter import check_rate_limit
 
 router = APIRouter()
@@ -108,6 +117,82 @@ async def create_case_brief(
             await db.rollback()
             logger.exception("Failed to persist case brief")
             raise HTTPException(status_code=500, detail="Failed to save brief")
+
+    return {"data": repo.document_to_dict(doc), "status": "success"}
+
+
+# ── GET /draft-templates ─────────────────────────────────────────────────────
+
+@router.get("/draft-templates")
+async def list_draft_templates(
+    caller: CallerIdentity = Depends(resolve_caller),  # noqa: ARG001 — auth gate only
+) -> Dict[str, Any]:
+    return {
+        "data": {"templates": [t.model_dump() for t in list_templates()]},
+        "status": "success",
+    }
+
+
+# ── POST /matters/{matter_id}/drafts ─────────────────────────────────────────
+
+@router.post("/matters/{matter_id}/drafts", status_code=201)
+async def create_pleading_draft(
+    matter_id: uuid.UUID,
+    body: GenerateDraftRequest,
+    caller: CallerIdentity = Depends(resolve_caller),
+) -> Dict[str, Any]:
+    check_rate_limit("pleading_draft", caller.subject)
+
+    template = get_template(body.template_id)
+    if template is None:
+        raise HTTPException(status_code=400, detail=f"Unknown template '{body.template_id}'")
+
+    # Validate ownership and pull the matter's parties for prompt context.
+    async with AsyncSessionLocal() as db:
+        matter_full = await repo.fetch_matter_full(
+            db, matter_id=matter_id, user_id=caller.user_id
+        )
+    if matter_full is None:
+        raise HTTPException(status_code=404, detail="Matter not found")
+
+    parties_block = format_parties_block(matter_full.get("parties") or [])
+
+    try:
+        markdown = generate_pleading_draft(
+            template, body.fields, parties_block=parties_block
+        )
+    except DraftValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ValueError as exc:
+        logger.warning("Pleading-draft generation refused: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    title = (body.title or "").strip() or template.label
+    content = {
+        "template_id": template.id,
+        "fields": body.fields,
+        "markdown": markdown,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    async with AsyncSessionLocal() as db:
+        try:
+            doc = await repo.create_document(
+                db,
+                matter_id=matter_id,
+                user_id=caller.user_id,
+                type="pleading_draft",
+                title=title,
+                content=content,
+                source_url=None,
+                source_query_id=body.query_id,
+                status="draft",
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("Failed to persist pleading draft")
+            raise HTTPException(status_code=500, detail="Failed to save draft")
 
     return {"data": repo.document_to_dict(doc), "status": "success"}
 

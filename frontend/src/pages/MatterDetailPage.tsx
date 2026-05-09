@@ -62,13 +62,14 @@ import NewBriefDialog from '../components/NewBriefDialog';
 import DocumentList from '../components/DocumentList';
 import ThreadPicker from '../components/ThreadPicker';
 import MatterTabs, { type MatterTab } from '../components/MatterTabs';
+import NewDraftDialog from '../components/NewDraftDialog';
 import MatterSettingsForm from '../components/MatterSettingsForm';
 import {
   Inspector,
   InspectorToggleGroup,
   type InspectorTab,
 } from '../components/Inspector';
-import { Plus } from 'lucide-react';
+import { Plus, FilePlus } from 'lucide-react';
 
 const SESSION_STORAGE_KEY = 'vidhi.sessionId';
 
@@ -138,6 +139,8 @@ export default function MatterDetailPage() {
   const [briefDialogSeed, setBriefDialogSeed] = useState<
     { url?: string; title?: string; queryId?: string } | null
   >(null);
+
+  const [draftDialogOpen, setDraftDialogOpen] = useState(false);
 
   // ── Bootstrap: fetch this matter's detail ─────────────────────────────────
   useEffect(() => {
@@ -536,7 +539,8 @@ export default function MatterDetailPage() {
           <DocumentsView
             documents={activeMatter?.documents ?? []}
             onOpen={handleOpenDocument}
-            onNew={handleNewBriefFromTab}
+            onNewBrief={handleNewBriefFromTab}
+            onNewDraft={() => setDraftDialogOpen(true)}
           />
         )}
         {activeTab === 'settings' && activeMatter && (
@@ -572,6 +576,17 @@ export default function MatterDetailPage() {
         onClose={() => setBriefDialogSeed(null)}
         onGenerate={handleGenerateBrief}
         onCreated={handleBriefCreated}
+      />
+
+      <NewDraftDialog
+        open={draftDialogOpen}
+        matterId={matterId}
+        onClose={() => setDraftDialogOpen(false)}
+        onCreated={doc => {
+          setDraftDialogOpen(false);
+          void refreshActiveMatter();
+          navigate(`/matters/${matterId}/documents/${doc.id}`);
+        }}
       />
 
       <style>
@@ -788,11 +803,13 @@ function ResearchEmpty() {
 function DocumentsView({
   documents,
   onOpen,
-  onNew,
+  onNewBrief,
+  onNewDraft,
 }: {
   documents: DocumentRecord[];
   onOpen: (id: string) => void;
-  onNew: () => void;
+  onNewBrief: () => void;
+  onNewDraft: () => void;
 }) {
   return (
     <main
@@ -831,23 +848,49 @@ function DocumentsView({
                 : `${documents.length} ${documents.length === 1 ? 'document' : 'documents'} in this matter.`}
             </p>
           </div>
-          <button
-            onClick={onNew}
-            className="inline-flex items-center cursor-pointer border-0"
-            style={{
-              gap: t.space.xs,
-              padding: `${t.space.sm} ${t.space.md}`,
-              fontSize: t.size.ui,
-              fontWeight: t.weight.semibold,
-              color: t.color.bg,
-              backgroundColor: t.color.accent,
-              borderRadius: t.radius.md,
-              transition: t.motion.fast,
-            }}
-          >
-            <Plus size={13} />
-            New brief
-          </button>
+          <div className="flex items-center" style={{ gap: t.space.sm }}>
+            <button
+              onClick={onNewDraft}
+              className="inline-flex items-center cursor-pointer"
+              style={{
+                gap: t.space.xs,
+                padding: `${t.space.sm} ${t.space.md}`,
+                fontSize: t.size.ui,
+                fontWeight: t.weight.medium,
+                color: t.color.text,
+                backgroundColor: 'transparent',
+                border: `1px solid ${t.color.border}`,
+                borderRadius: t.radius.md,
+                transition: t.motion.fast,
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = t.color.accent;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = t.color.border;
+              }}
+            >
+              <FilePlus size={13} />
+              New draft
+            </button>
+            <button
+              onClick={onNewBrief}
+              className="inline-flex items-center cursor-pointer border-0"
+              style={{
+                gap: t.space.xs,
+                padding: `${t.space.sm} ${t.space.md}`,
+                fontSize: t.size.ui,
+                fontWeight: t.weight.semibold,
+                color: t.color.bg,
+                backgroundColor: t.color.accent,
+                borderRadius: t.radius.md,
+                transition: t.motion.fast,
+              }}
+            >
+              <Plus size={13} />
+              New brief
+            </button>
+          </div>
         </header>
 
         {documents.length === 0 ? (
@@ -869,27 +912,48 @@ function DocumentsView({
                 lineHeight: 1.6,
               }}
             >
-              Case briefs you generate from a judgment URL — or save from a
-              search result — appear here. Mark them final, edit any section
-              inline, or paste them into your draft.
+              Case briefs (research → structured summary) and pleading drafts
+              (form → first-pass document) live here. Mark them final, edit
+              any section inline, or paste them into your filing.
             </p>
-            <button
-              onClick={onNew}
-              className="inline-flex items-center cursor-pointer border-0"
-              style={{
-                marginTop: t.space.lg,
-                gap: t.space.xs,
-                padding: `${t.space.sm} ${t.space.md}`,
-                fontSize: t.size.ui,
-                fontWeight: t.weight.semibold,
-                color: t.color.bg,
-                backgroundColor: t.color.accent,
-                borderRadius: t.radius.md,
-              }}
+            <div
+              className="inline-flex items-center"
+              style={{ gap: t.space.sm, marginTop: t.space.lg }}
             >
-              <Plus size={13} />
-              New brief
-            </button>
+              <button
+                onClick={onNewDraft}
+                className="inline-flex items-center cursor-pointer"
+                style={{
+                  gap: t.space.xs,
+                  padding: `${t.space.sm} ${t.space.md}`,
+                  fontSize: t.size.ui,
+                  fontWeight: t.weight.medium,
+                  color: t.color.text,
+                  backgroundColor: 'transparent',
+                  border: `1px solid ${t.color.border}`,
+                  borderRadius: t.radius.md,
+                }}
+              >
+                <FilePlus size={13} />
+                New draft
+              </button>
+              <button
+                onClick={onNewBrief}
+                className="inline-flex items-center cursor-pointer border-0"
+                style={{
+                  gap: t.space.xs,
+                  padding: `${t.space.sm} ${t.space.md}`,
+                  fontSize: t.size.ui,
+                  fontWeight: t.weight.semibold,
+                  color: t.color.bg,
+                  backgroundColor: t.color.accent,
+                  borderRadius: t.radius.md,
+                }}
+              >
+                <Plus size={13} />
+                New brief
+              </button>
+            </div>
           </div>
         ) : (
           <DocumentList documents={documents} onOpen={onOpen} />
