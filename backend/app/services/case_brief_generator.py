@@ -26,10 +26,11 @@ from app.services.content_extractor import fetch_content_from_url
 
 logger = logging.getLogger(__name__)
 
-_CF_URL = (
-    "https://api.cloudflare.com/client/v4/accounts/{account_id}"
-    "/ai/run/@cf/meta/llama-3.1-70b-instruct"
-)
+def _cf_url() -> str:
+    return (
+        "https://api.cloudflare.com/client/v4/accounts/"
+        f"{settings.CLOUDFLARE_ACCOUNT_ID}/ai/run/{settings.CLOUDFLARE_LLM_MODEL}"
+    )
 
 # Larger budget than search snippets — judgments are long and we want the
 # LLM to see facts AND ratio, which often live many paragraphs apart.
@@ -120,7 +121,6 @@ def generate_case_brief(
     if not text:
         raise ValueError("Cannot generate a brief from empty text")
 
-    url = _CF_URL.format(account_id=settings.CLOUDFLARE_ACCOUNT_ID)
     payload = {
         "messages": [
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -137,7 +137,7 @@ def generate_case_brief(
         "Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}",
         "Content-Type": "application/json",
     }
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+    resp = requests.post(_cf_url(), headers=headers, json=payload, timeout=60)
     resp.raise_for_status()
     body = resp.json()
     if not body.get("success"):

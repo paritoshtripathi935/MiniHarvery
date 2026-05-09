@@ -3,10 +3,7 @@ from pydantic import BaseModel
 
 
 class LegalSearchResult(BaseModel):
-    """
-    Legal-domain equivalent of MiniPerplexity's SearchResult.
-    Extends it with jurisdiction, citation, doc_type, and year.
-    """
+    """One legal search result — judgment, act, article, or generic page."""
     question: str
     title: str
     url: str

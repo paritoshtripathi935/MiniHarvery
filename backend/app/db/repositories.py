@@ -121,14 +121,6 @@ async def delete_session(db: AsyncSession, session_id: uuid.UUID) -> bool:
     return result.rowcount > 0
 
 
-async def evict_expired_sessions(db: AsyncSession) -> int:
-    now = datetime.now(timezone.utc)
-    result = await db.execute(
-        delete(models.Session).where(models.Session.expires_at < now)
-    )
-    return result.rowcount or 0
-
-
 # ── Threads ─────────────────────────────────────────────────────────────────
 
 def _derive_title(raw_query: str, max_chars: int = 80) -> str:
@@ -287,6 +279,19 @@ async def get_query_owned_by(
         .where(models.Query.id == query_id)
         .where(models.Query.user_id == user_id)
         .where(models.Query.deleted_at.is_(None))
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def latest_query_in_thread(
+    db: AsyncSession, thread_id: uuid.UUID
+) -> Optional[models.Query]:
+    stmt = (
+        select(models.Query)
+        .where(models.Query.thread_id == thread_id)
+        .where(models.Query.deleted_at.is_(None))
+        .order_by(models.Query.created_at.desc())
+        .limit(1)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
 

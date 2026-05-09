@@ -1,8 +1,5 @@
-"""
-Content extractor — BS4-based HTML stripper for legal documents.
-Ported from MiniPerplexity's fetch_content_from_url pattern.
-Adapted for Indian legal page structures.
-"""
+"""BS4-based HTML stripper. Targets Indian legal page structures, falls back
+to a generic paragraph collector for everything else."""
 import logging
 import requests
 from bs4 import BeautifulSoup
@@ -10,7 +7,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# User agents to rotate (same as MiniPerplexity)
+# Rotated to look less bot-like to upstreams that throttle on UA.
 _USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
@@ -64,7 +61,7 @@ def extract_text(html: str, max_chars: int = 2000) -> str:
     if act_div:
         return _clean(act_div.get_text(separator=" "), max_chars)
 
-    # Generic: collect first 5 meaningful paragraphs (same as MiniPerplexity)
+    # Generic fallback — first 5 meaningful paragraphs.
     paragraphs = []
     for p in soup.find_all("p"):
         text = p.get_text(strip=True)

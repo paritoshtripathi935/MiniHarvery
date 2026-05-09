@@ -2,11 +2,15 @@
 Query handler — search + streaming answer.
 
 POST /search/{session_id}    — run legal search, persist, return thread_id + query_id
-POST /answer/{session_id}    — stream Harvey's legal answer via SSE
-DELETE /session/{session_id} — drop a single session (rarely used now that
-                               threads carry the user-facing history)
+POST /answer/{session_id}    — stream the legal answer via SSE
+DELETE /session/{session_id} — drop a single session row
 
 Every endpoint requires a valid Clerk session JWT; there is no guest path.
+
+`/search` and `/answer` manage their own DB sessions (rather than using
+`Depends(get_session)`) because they make expensive non-DB calls — outbound
+search and a streaming LLM call — and we do not want to hold a connection
+from the pool over those.
 """
 import hashlib
 import json
@@ -18,9 +22,11 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CallerIdentity, resolve_caller
-from app.db import AsyncSessionLocal, db_enabled
+from app.core.settings import settings
+from app.db import AsyncSessionLocal, db_enabled, get_session
 from app.db import repositories as repo
 from app.models.query_model import AnswerRequest, SearchRequest
 from app.services.legal_search_service import search_legal_sources, search_videos
@@ -32,8 +38,6 @@ from app.utils.rate_limiter import check_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_LLM_MODEL = "@cf/meta/llama-3.1-70b-instruct"
 
 
 def _coerce_session_uuid(session_id: str) -> uuid.UUID:
@@ -177,20 +181,7 @@ async def answer(
                 db, thread_id=body.thread_id, user_id=user_id
             ):
                 raise HTTPException(status_code=404, detail="Thread not found")
-            previous_in_thread = await repo.previous_queries_for_thread(
-                db, body.thread_id, limit=1
-            )
-            if previous_in_thread:
-                # Pick the actual latest query row in this thread.
-                from sqlalchemy import select  # local import — only used here
-                from app.db import models
-                latest_q = (await db.execute(
-                    select(models.Query)
-                    .where(models.Query.thread_id == body.thread_id)
-                    .where(models.Query.deleted_at.is_(None))
-                    .order_by(models.Query.created_at.desc())
-                    .limit(1)
-                )).scalar_one_or_none()
+            latest_q = await repo.latest_query_in_thread(db, body.thread_id)
 
         if latest_q is None:
             # /answer with no /search history at all — make a thread + query
@@ -219,7 +210,7 @@ async def answer(
         )
         query_type = latest_q.query_type
         pending = await repo.create_pending_answer(
-            db, query_id=latest_q.id, model=_LLM_MODEL
+            db, query_id=latest_q.id, model=settings.CLOUDFLARE_LLM_MODEL
         )
         answer_id = pending.id
         await db.commit()
@@ -297,16 +288,10 @@ async def answer(
 async def clear_session(
     session_id: str,
     caller: CallerIdentity = Depends(resolve_caller),  # noqa: ARG001 — auth gate only
+    db: AsyncSession = Depends(get_session),
 ) -> None:
     sess_uuid = _coerce_session_uuid(session_id)
-    async with AsyncSessionLocal() as db:
-        try:
-            await repo.delete_session(db, sess_uuid)
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            logger.exception("Failed to delete session")
-            raise HTTPException(status_code=500, detail="Failed to clear session")
+    await repo.delete_session(db, sess_uuid)
 
 
 # ── GET /health ───────────────────────────────────────────────────────────────

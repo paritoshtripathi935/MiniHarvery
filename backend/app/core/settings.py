@@ -4,14 +4,14 @@ from typing import List
 
 
 class Settings(BaseSettings):
-    # Cloudflare AI (same as MiniPerplexity).
-    # Accept either CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_KEY in .env —
-    # MiniPerplexity uses the latter; we prefer TOKEN but stay compatible.
+    # Cloudflare Workers AI. Accept either CLOUDFLARE_API_TOKEN or
+    # CLOUDFLARE_API_KEY in .env — we prefer TOKEN but stay compatible.
     CLOUDFLARE_API_TOKEN: str = Field(
         default="",
         validation_alias=AliasChoices("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY"),
     )
     CLOUDFLARE_ACCOUNT_ID: str = ""
+    CLOUDFLARE_LLM_MODEL: str = "@cf/meta/llama-3.1-70b-instruct"
 
     # Indian legal search
     INDIAN_KANOON_API_TOKEN: str = ""
