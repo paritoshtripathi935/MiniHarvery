@@ -1,5 +1,10 @@
-import type { CaseBriefContent, DocumentRecord } from '../types';
+import type {
+  CaseBriefContent,
+  DocumentRecord,
+  PleadingDraftContent,
+} from '../types';
 import CaseBriefEditor from './CaseBriefEditor';
+import MarkdownDraftEditor from './MarkdownDraftEditor';
 import { t } from '../design/tokens';
 
 interface Props {
@@ -10,8 +15,8 @@ interface Props {
 
 /**
  * Pick the right editor for a polymorphic document. Adding a new type
- * (Sprint 3 adds `pleading_draft`) means writing the editor and adding
- * one branch here — no other site changes.
+ * means writing the editor and adding one branch here — no other site
+ * changes (this is the value of the discriminated `DocumentRecord`).
  */
 export default function DocumentRenderer({ doc, onContentChange }: Props) {
   switch (doc.type) {
@@ -25,6 +30,14 @@ export default function DocumentRenderer({ doc, onContentChange }: Props) {
         />
       );
     case 'pleading_draft':
+      return (
+        <MarkdownDraftEditor
+          content={doc.content}
+          onSave={(next: PleadingDraftContent) =>
+            onContentChange(next as unknown as Record<string, unknown>)
+          }
+        />
+      );
     case 'authorities_table':
     case 'note':
       return <UnsupportedType type={doc.type} />;
