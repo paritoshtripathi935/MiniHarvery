@@ -14,7 +14,7 @@ from fastapi import HTTPException, Request
 
 from app.db import AsyncSessionLocal, db_enabled
 from app.db import repositories as repo
-from app.utils.clerk_auth import ClerkAuthError, auth_enabled, verify_clerk_jwt
+from app.core.auth import ClerkAuthError, auth_enabled, verify_clerk_jwt
 
 logger = logging.getLogger(__name__)
 

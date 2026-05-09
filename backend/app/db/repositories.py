@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import settings
 from app.db import models
-from app.models.search_model import LegalSearchResult, VideoResult
+from app.schemas.search_model import LegalSearchResult, VideoResult
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +123,7 @@ async def delete_session(db: AsyncSession, session_id: uuid.UUID) -> bool:
 
 # ── Threads ─────────────────────────────────────────────────────────────────
 
-def _derive_title(raw_query: str, max_chars: int = 80) -> str:
+def derive_thread_title(raw_query: str, max_chars: int = 80) -> str:
     title = raw_query.strip().splitlines()[0] if raw_query.strip() else "Untitled"
     return title[:max_chars]
 
@@ -734,7 +734,7 @@ async def fetch_matter_full(
             }
             for r in thread_rows
         ],
-        "documents": [_document_to_dict(d) for d in doc_rows],
+        "documents": [document_to_dict(d) for d in doc_rows],
     }
 
 
@@ -803,7 +803,7 @@ async def soft_delete_matter(
 
 # ── Documents ───────────────────────────────────────────────────────────────
 
-def _document_to_dict(d: models.Document) -> dict:
+def document_to_dict(d: models.Document) -> dict:
     return {
         "id": str(d.id),
         "matter_id": str(d.matter_id),
