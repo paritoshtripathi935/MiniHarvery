@@ -18,6 +18,7 @@ import {
 import { useAuth, useUser } from '@clerk/clerk-react';
 import {
   createMatter as apiCreateMatter,
+  deleteMatter as apiDeleteMatter,
   listMatters,
   patchMatter,
   type CreateMatterInput,
@@ -37,6 +38,9 @@ interface Ctx {
   createMatter: (input: CreateMatterInput) => Promise<MatterDetail>;
   /** PATCH a matter, optimistically apply the change, reconcile on response. */
   updateMatter: (id: string, fields: UpdateMatterInput) => Promise<MatterDetail>;
+  /** Soft-delete a matter. Optimistically drops it from the list; refreshes
+   *  on error so the rollback reflects server truth. */
+  removeMatter: (id: string) => Promise<void>;
   inboxMatter: MatterSummary | null;
 }
 
@@ -132,6 +136,23 @@ export function MattersProvider({ children }: { children: ReactNode }) {
     [user?.id, getAuthToken, upsertSummary, refresh],
   );
 
+  const removeMatter = useCallback(
+    async (id: string) => {
+      const previous = matters;
+      setMatters(prev => prev.filter(m => m.id !== id));
+      try {
+        await apiDeleteMatter(id, user?.id, getAuthToken);
+      } catch (err) {
+        // Roll back via fresh server read — fast, simple, and the user is
+        // about to see an error toast anyway.
+        setMatters(previous);
+        void refresh();
+        throw err;
+      }
+    },
+    [matters, user?.id, getAuthToken, refresh],
+  );
+
   const inboxMatter = useMemo(
     () => matters.find(m => m.is_inbox) ?? null,
     [matters],
@@ -146,6 +167,7 @@ export function MattersProvider({ children }: { children: ReactNode }) {
     upsertSummary,
     createMatter,
     updateMatter,
+    removeMatter,
     inboxMatter,
   };
 

@@ -9,22 +9,36 @@
  * the form" UX would be jarring. Two steps with a back button keeps it
  * clear which artefact the user is producing.
  *
+ * Two open modes:
+ *   - **Inside a matter** — `matterId` provided; the draft persists there.
+ *   - **From the home page** — `matterId` omitted; step 2 shows a matter
+ *     picker (defaulting to the user's Inbox). This lets you start a
+ *     draft without first navigating into a case file.
+ *
+ * `seedTemplateId` skips step 1 when the caller already knows which
+ * template they want (e.g. clicking a template card on the home page).
+ *
  * On success the parent is notified via `onCreated` and is responsible
  * for navigating to the new document page.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, FileText, Gavel, Scale, Send, Loader2 } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import type { DraftField as DraftFieldDef, DraftTemplate, PleadingDraftDocument } from '../types';
 import { generatePleadingDraft, type GeneratePleadingDraftInput } from '../services/api';
 import { loadDraftTemplates } from '../services/draftTemplates';
+import { useMatters } from '../state/MattersContext';
 import Dialog from './Dialog';
 import DraftField from './DraftField';
+import { Field } from './Field';
 import { t } from '../design/tokens';
 
 interface Props {
   open: boolean;
-  matterId: string;
+  /** Lock the draft to a specific matter. Omit to show a picker. */
+  matterId?: string;
+  /** Pre-select a template and skip step 1. */
+  seedTemplateId?: string;
   onClose: () => void;
   onCreated: (doc: PleadingDraftDocument) => void;
 }
@@ -38,41 +52,74 @@ const TEMPLATE_ICON: Record<string, React.ComponentType<{ size?: number }>> = {
   legal_notice: Send,
 };
 
-export default function NewDraftDialog({ open, matterId, onClose, onCreated }: Props) {
+export default function NewDraftDialog({
+  open,
+  matterId,
+  seedTemplateId,
+  onClose,
+  onCreated,
+}: Props) {
   const { user } = useUser();
   const { getToken } = useAuth();
+  const { matters, inboxMatter } = useMatters();
 
   const [templates, setTemplates] = useState<DraftTemplate[] | null>(null);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>('pick');
   const [selected, setSelected] = useState<DraftTemplate | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
+  // Resolved at submit time. When the caller fixed a matter, this stays
+  // pinned to that id; otherwise the user picks via the in-dialog select.
+  const [chosenMatterId, setChosenMatterId] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const matterPickerOptions = useMemo(() => {
+    // Inbox first (default landing), then non-inbox by recency.
+    const inbox = matters.filter(m => m.is_inbox);
+    const rest = matters
+      .filter(m => !m.is_inbox)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+    return [...inbox, ...rest];
+  }, [matters]);
 
   // Load templates on open. Cached at the module level — repeated opens
   // don't re-fetch.
   useEffect(() => {
     if (!open) return;
-    setStep('pick');
     setSelected(null);
     setValues({});
     setBusy(false);
     setSubmitError(null);
     setTemplatesError(null);
+    setChosenMatterId(matterId ?? inboxMatter?.id ?? '');
 
     loadDraftTemplates(user?.id, () => getToken())
-      .then(setTemplates)
+      .then(list => {
+        setTemplates(list);
+        // If a seed template was passed, jump straight to the fields form.
+        if (seedTemplateId) {
+          const seed = list.find(t_ => t_.id === seedTemplateId);
+          if (seed) {
+            seedSelection(seed);
+            return;
+          }
+        }
+        setStep('pick');
+      })
       .catch(err => {
         setTemplatesError(
           err instanceof Error ? err.message : 'Could not load templates',
         );
       });
-  }, [open, user?.id, getToken]);
+    // seedTemplateId / matterId / inboxMatter are open-time bindings; we
+    // intentionally only reset on `open` flips so re-renders don't reset
+    // mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  const choose = (tpl: DraftTemplate) => {
+  const seedSelection = (tpl: DraftTemplate) => {
     setSelected(tpl);
-    // Seed empty values so React doesn't complain about uncontrolled inputs.
     const seed: Record<string, unknown> = {};
     for (const f of tpl.fields) {
       seed[f.id] = f.type === 'list' ? [] : '';
@@ -84,6 +131,12 @@ export default function NewDraftDialog({ open, matterId, onClose, onCreated }: P
 
   const back = () => {
     if (busy) return;
+    // If the dialog opened pre-seeded with a template, "Back" is a no-op
+    // (there's no picker to return to in that mode); cancel the dialog.
+    if (seedTemplateId) {
+      onClose();
+      return;
+    }
     setStep('pick');
     setSelected(null);
     setSubmitError(null);
@@ -95,6 +148,11 @@ export default function NewDraftDialog({ open, matterId, onClose, onCreated }: P
 
   const submit = async () => {
     if (!selected || busy) return;
+    const targetMatter = chosenMatterId.trim();
+    if (!targetMatter) {
+      setSubmitError('Pick a matter to save the draft into.');
+      return;
+    }
     const missing = selected.fields
       .filter(f => f.required && isEmpty(values[f.id], f.type))
       .map(f => f.label);
@@ -110,7 +168,7 @@ export default function NewDraftDialog({ open, matterId, onClose, onCreated }: P
         template_id: selected.id,
         fields: values,
       };
-      const doc = await generatePleadingDraft(matterId, input, user?.id, () => getToken());
+      const doc = await generatePleadingDraft(targetMatter, input, user?.id, () => getToken());
       onCreated(doc);
     } catch (err) {
       setSubmitError(
@@ -181,7 +239,7 @@ export default function NewDraftDialog({ open, matterId, onClose, onCreated }: P
             Could not load templates: {templatesError}
           </p>
         ) : templates ? (
-          <TemplateGrid templates={templates} onChoose={choose} />
+          <TemplateGrid templates={templates} onChoose={seedSelection} />
         ) : (
           <p style={{ color: t.color.muted, fontSize: t.size.body }}>Loading templates…</p>
         )
@@ -192,6 +250,10 @@ export default function NewDraftDialog({ open, matterId, onClose, onCreated }: P
           onChange={updateField}
           disabled={busy}
           submitError={submitError}
+          showMatterPicker={!matterId}
+          matterOptions={matterPickerOptions}
+          chosenMatterId={chosenMatterId}
+          onChooseMatter={setChosenMatterId}
         />
       ) : null}
     </Dialog>
@@ -280,15 +342,59 @@ function FieldsForm({
   onChange,
   disabled,
   submitError,
+  showMatterPicker,
+  matterOptions,
+  chosenMatterId,
+  onChooseMatter,
 }: {
   fields: DraftFieldDef[];
   values: Record<string, unknown>;
   onChange: (id: string, next: unknown) => void;
   disabled: boolean;
   submitError: string | null;
+  showMatterPicker: boolean;
+  matterOptions: ReturnType<typeof useMatters>['matters'];
+  chosenMatterId: string;
+  onChooseMatter: (id: string) => void;
 }) {
   return (
     <div style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: t.space.xs }}>
+      {showMatterPicker && (
+        <Field
+          label="Save to matter"
+          htmlFor="draft-matter-picker"
+          hint="Defaults to your Inbox. Pick a specific case file if this draft belongs there."
+        >
+          <select
+            id="draft-matter-picker"
+            value={chosenMatterId}
+            onChange={e => onChooseMatter(e.target.value)}
+            disabled={disabled || matterOptions.length === 0}
+            style={{
+              display: 'block',
+              width: '100%',
+              fontFamily: 'inherit',
+              fontSize: t.size.body,
+              color: t.color.text,
+              backgroundColor: t.color.surface,
+              border: `1px solid ${t.color.border}`,
+              borderRadius: t.radius.sm,
+              padding: `${t.space.sm} ${t.space.md}`,
+              outline: 'none',
+              appearance: 'none',
+            }}
+          >
+            {matterOptions.length === 0 && (
+              <option value="">(no matters yet — create one first)</option>
+            )}
+            {matterOptions.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.is_inbox ? `Inbox · ${m.title}` : m.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       {fields.map(f => (
         <DraftField
           key={f.id}
