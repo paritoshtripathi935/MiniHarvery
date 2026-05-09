@@ -11,7 +11,20 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_API_KEY"),
     )
     CLOUDFLARE_ACCOUNT_ID: str = ""
-    CLOUDFLARE_LLM_MODEL: str = "@cf/meta/llama-3.1-70b-instruct"
+
+    # Per-call-site model routing. Each LLM path picks a model that fits its
+    # job: a fast 8B for one-shot rewrites, FP8-fast 70B for streaming prose,
+    # a 128k-context model for long judgment extraction. All four are native
+    # Cloudflare Workers AI models — same API token, same billing.
+    # Override per-environment via env vars of the same name.
+    #
+    # See `.claude/CLOUDFLARE_MODEL_RESEARCH.md` for the routing rationale,
+    # cost analysis, and known gotchas (notably: llama-3.3-70b-fp8-fast has
+    # a 24k context window — too small for the brief path's long inputs).
+    CLOUDFLARE_LLM_MODEL_REWRITE: str = "@cf/meta/llama-3.1-8b-instruct-fast"
+    CLOUDFLARE_LLM_MODEL_ANSWER: str = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    CLOUDFLARE_LLM_MODEL_BRIEF: str = "@cf/openai/gpt-oss-120b"
+    CLOUDFLARE_LLM_MODEL_DRAFT: str = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
     # Indian legal search
     INDIAN_KANOON_API_TOKEN: str = ""

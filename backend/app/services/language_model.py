@@ -9,6 +9,7 @@ from typing import Generator, List
 
 import requests
 
+from app.core.settings import settings
 from app.schemas.search_model import LegalSearchResult
 from app.services import cloudflare_ai
 
@@ -124,7 +125,12 @@ def rewrite_query_for_search(raw_query: str) -> str:
         {"role": "user", "content": raw_query},
     ]
     try:
-        rewritten = cloudflare_ai.chat_completion(messages, max_tokens=64, timeout=8)
+        rewritten = cloudflare_ai.chat_completion(
+            messages,
+            model=settings.CLOUDFLARE_LLM_MODEL_REWRITE,
+            max_tokens=64,
+            timeout=8,
+        )
     except Exception as exc:
         logger.warning("Query rewrite failed, using raw query: %s", exc)
         return raw_query
@@ -153,7 +159,12 @@ def generate_legal_answer(
     messages = _build_messages(query, query_type, search_results, previous_queries)
     # 2048 max_tokens: Cloudflare's 256 default truncates the briefs mid-section.
     try:
-        yield from cloudflare_ai.chat_completion_stream(messages, max_tokens=2048, timeout=90)
+        yield from cloudflare_ai.chat_completion_stream(
+            messages,
+            model=settings.CLOUDFLARE_LLM_MODEL_ANSWER,
+            max_tokens=2048,
+            timeout=90,
+        )
     except requests.exceptions.Timeout:
         logger.error("Cloudflare AI request timed out")
         yield "\n\n[Error: The AI response timed out. Please try again.]"

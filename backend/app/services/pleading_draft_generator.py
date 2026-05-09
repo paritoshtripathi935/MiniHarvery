@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from app.core.settings import settings
 from app.schemas.draft_model import DraftTemplate
 from app.services import cloudflare_ai
 from app.services.pleading_templates import get_prompts
@@ -119,6 +120,7 @@ def generate_pleading_draft(
     try:
         markdown = cloudflare_ai.chat_completion(
             messages,
+            model=settings.CLOUDFLARE_LLM_MODEL_DRAFT,
             max_tokens=_DRAFT_MAX_TOKENS,
             temperature=_DRAFT_TEMPERATURE,
             timeout=_DRAFT_TIMEOUT,

@@ -101,7 +101,7 @@ async def prepare_answer(
             db, latest_q.thread_id, limit=3
         )
         pending = await repo.create_pending_answer(
-            db, query_id=latest_q.id, model=settings.CLOUDFLARE_LLM_MODEL
+            db, query_id=latest_q.id, model=settings.CLOUDFLARE_LLM_MODEL_ANSWER
         )
         await db.commit()
 
