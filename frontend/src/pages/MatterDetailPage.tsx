@@ -62,6 +62,7 @@ import NewBriefDialog from '../components/NewBriefDialog';
 import DocumentList from '../components/DocumentList';
 import ThreadPicker from '../components/ThreadPicker';
 import MatterTabs, { type MatterTab } from '../components/MatterTabs';
+import MatterSettingsForm from '../components/MatterSettingsForm';
 import {
   Inspector,
   InspectorToggleGroup,
@@ -538,7 +539,12 @@ export default function MatterDetailPage() {
             onNew={handleNewBriefFromTab}
           />
         )}
-        {activeTab === 'settings' && <SettingsView />}
+        {activeTab === 'settings' && activeMatter && (
+          <MatterSettingsForm
+            matter={activeMatter}
+            onUpdated={setActiveMatter}
+          />
+        )}
 
         {activeTab === 'research' && inspectorOpen && (
           <Inspector
@@ -893,45 +899,3 @@ function DocumentsView({
   );
 }
 
-// ─── Settings view (placeholder) ───────────────────────────────────────────
-
-function SettingsView() {
-  return (
-    <main
-      className="flex-1 overflow-y-auto"
-      style={{
-        backgroundColor: t.color.bg,
-        padding: `${t.space.lg} ${t.space.xl}`,
-      }}
-    >
-      <div style={{ maxWidth: '720px', margin: '0 auto' }}>
-        <h2
-          className="serif m-0"
-          style={{
-            fontSize: t.size.h2,
-            fontWeight: t.weight.semibold,
-            color: t.color.text,
-          }}
-        >
-          Settings
-        </h2>
-        <p
-          className="m-0"
-          style={{
-            fontSize: t.size.body,
-            color: t.color.muted,
-            marginTop: t.space.xs,
-          }}
-        >
-          Matter metadata — parties, court, cause number, status. Editing
-          UI ships in the next iteration; the backend already supports it
-          via{' '}
-          <code className="mono" style={{ fontSize: t.size.ui }}>
-            PATCH /api/v1/matters/&#123;id&#125;
-          </code>
-          .
-        </p>
-      </div>
-    </main>
-  );
-}
