@@ -11,7 +11,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Pencil, Eye } from 'lucide-react';
+import { Info, Pencil, Eye } from 'lucide-react';
 import type { PleadingDraftContent } from '../types';
 import { useDebouncedSave } from '../hooks/useDebouncedSave';
 import { t } from '../design/tokens';
@@ -45,12 +45,45 @@ export default function MarkdownDraftEditor({ content, onSave }: Props) {
 
   return (
     <div>
+      <FirstPassNotice />
       <ModeToggle mode={mode} onChange={setMode} />
       {mode === 'edit' ? (
         <Editor value={markdown} onChange={update} />
       ) : (
         <Preview markdown={markdown} />
       )}
+    </div>
+  );
+}
+
+// Templates here are scaffolds modelled on Indian pleading conventions —
+// not adapted from any specific court's published forms or schedule.
+// Honest framing for working advocates: this is a first-pass draft to
+// edit, not a file-ready document.
+function FirstPassNotice() {
+  return (
+    <div
+      className="inline-flex items-start"
+      style={{
+        gap: t.space.xs,
+        padding: `${t.space.xs} ${t.space.sm}`,
+        marginBottom: t.space.sm,
+        fontSize: t.size.micro,
+        color: t.color.muted,
+        backgroundColor: t.color.hover,
+        border: `1px solid ${t.color.border}`,
+        borderRadius: t.radius.sm,
+        maxWidth: '78ch',
+        lineHeight: 1.5,
+      }}
+    >
+      <Info size={11} style={{ flexShrink: 0, marginTop: '3px', color: t.color.dim }} />
+      <span>
+        First-pass draft — generic structure, not adapted from any specific
+        court's rules or schedule of forms. Verify against your court's
+        Civil/Original-Side Rules (paper size, court-fee endorsement,
+        vakalatnama, affidavit-in-support, signature block) before filing.
+      </span>
     </div>
   );
 }
