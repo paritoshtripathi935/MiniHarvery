@@ -70,8 +70,11 @@ Source URL: {url}
 
 def fetch_case_text(url: str) -> str:
     """Pull the judgment text. Returns empty string on failure — caller
-    should refuse rather than feed empty text to the LLM."""
-    return fetch_content_from_url(url, max_chars=_FETCH_CHAR_BUDGET) or ""
+    should refuse rather than feed empty text to the LLM.
+
+    15s timeout vs. the snippet-fetch default of 5s — judgment pages on
+    livelaw / scconline / casemine are large and slow."""
+    return fetch_content_from_url(url, max_chars=_FETCH_CHAR_BUDGET, timeout=15) or ""
 
 
 def _extract_json(text: str) -> dict:
@@ -141,7 +144,7 @@ def generate_case_brief(
         # at least gets the document scaffold and the source URL.
         return _empty_brief(source_url)
 
-    return CaseBrief(
+    brief = CaseBrief(
         citation=parsed.get("citation") or None,
         facts=list(parsed.get("facts") or []),
         issues=list(parsed.get("issues") or []),
@@ -152,6 +155,21 @@ def generate_case_brief(
         dicta=list(parsed.get("dicta") or []),
         source_url=source_url,
     )
+
+    # Guard against silent extraction failures: if the model produced an
+    # all-empty brief from a tiny input, the source page almost certainly
+    # didn't contain a judgment (paywall, nav-only, JS-rendered shell).
+    # Better to fail loudly than persist a junk document.
+    structural = (
+        brief["facts"] + brief["issues"] + brief["ratio"] + brief["holding"]
+    )
+    if not structural and len(text) < 500:
+        raise ValueError(
+            "Could not extract usable judgment text from the source — "
+            "paste the judgment text directly."
+        )
+
+    return brief
 
 
 def derive_brief_title(brief: CaseBrief, fallback: str = "Case brief") -> str:
