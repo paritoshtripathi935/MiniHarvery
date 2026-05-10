@@ -63,13 +63,14 @@ import DocumentList from '../components/DocumentList';
 import ThreadPicker from '../components/ThreadPicker';
 import MatterTabs, { type MatterTab } from '../components/MatterTabs';
 import NewDraftDialog from '../components/NewDraftDialog';
+import NewDraftButton from '../components/NewDraftButton';
 import MatterSettingsForm from '../components/MatterSettingsForm';
 import {
   Inspector,
   InspectorToggleGroup,
   type InspectorTab,
 } from '../components/Inspector';
-import { Plus, FilePlus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
 const SESSION_STORAGE_KEY = 'vidhi.sessionId';
 
@@ -539,6 +540,7 @@ export default function MatterDetailPage() {
         {activeTab === 'documents' && (
           <DocumentsView
             documents={activeMatter?.documents ?? []}
+            matterId={matterId}
             onOpen={handleOpenDocument}
             onNewBrief={handleNewBriefFromTab}
             onNewDraft={() => setDraftDialogOpen(true)}
@@ -803,11 +805,13 @@ function ResearchEmpty() {
 
 function DocumentsView({
   documents,
+  matterId,
   onOpen,
   onNewBrief,
   onNewDraft,
 }: {
   documents: DocumentRecord[];
+  matterId: string;
   onOpen: (id: string) => void;
   onNewBrief: () => void;
   onNewDraft: () => void;
@@ -850,30 +854,7 @@ function DocumentsView({
             </p>
           </div>
           <div className="flex items-center" style={{ gap: t.space.sm }}>
-            <button
-              onClick={onNewDraft}
-              className="inline-flex items-center cursor-pointer"
-              style={{
-                gap: t.space.xs,
-                padding: `${t.space.sm} ${t.space.md}`,
-                fontSize: t.size.ui,
-                fontWeight: t.weight.medium,
-                color: t.color.text,
-                backgroundColor: 'transparent',
-                border: `1px solid ${t.color.border}`,
-                borderRadius: t.radius.md,
-                transition: t.motion.fast,
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = t.color.accent;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = t.color.border;
-              }}
-            >
-              <FilePlus size={13} />
-              New draft
-            </button>
+            <NewDraftButton matterId={matterId} onUseForm={onNewDraft} />
             <button
               onClick={onNewBrief}
               className="inline-flex items-center cursor-pointer border-0"
@@ -921,23 +902,7 @@ function DocumentsView({
               className="inline-flex items-center"
               style={{ gap: t.space.sm, marginTop: t.space.lg }}
             >
-              <button
-                onClick={onNewDraft}
-                className="inline-flex items-center cursor-pointer"
-                style={{
-                  gap: t.space.xs,
-                  padding: `${t.space.sm} ${t.space.md}`,
-                  fontSize: t.size.ui,
-                  fontWeight: t.weight.medium,
-                  color: t.color.text,
-                  backgroundColor: 'transparent',
-                  border: `1px solid ${t.color.border}`,
-                  borderRadius: t.radius.md,
-                }}
-              >
-                <FilePlus size={13} />
-                New draft
-              </button>
+              <NewDraftButton matterId={matterId} onUseForm={onNewDraft} />
               <button
                 onClick={onNewBrief}
                 className="inline-flex items-center cursor-pointer border-0"

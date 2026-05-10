@@ -21,7 +21,6 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
-  FilePlus,
   FileText,
   Gavel,
   Scale,
@@ -33,6 +32,7 @@ import { useMatters } from '../state/MattersContext';
 import MatterCard from '../components/MatterCard';
 import NewMatterButton from '../components/NewMatterButton';
 import NewDraftDialog from '../components/NewDraftDialog';
+import NewDraftButton from '../components/NewDraftButton';
 import { Breadcrumbs, Crumb } from '../layout/Breadcrumbs';
 import { t } from '../design/tokens';
 
@@ -113,7 +113,10 @@ export default function TodayPage() {
               onCreated={id => navigate(`/matters/${id}`)}
               onNewDraft={() => openDraftDialog()}
             />
-            <TemplatesGallery onChoose={tplId => openDraftDialog(tplId)} />
+            <TemplatesGallery
+              onChooseChat={tplId => navigate(`/drafting/${tplId}`)}
+              onUseForm={() => openDraftDialog()}
+            />
             {recent.length > 0 && (
               <RecentMattersSection
                 matters={recent}
@@ -251,30 +254,7 @@ function QuickActions({
       style={{ gap: t.space.sm, marginBottom: t.space.lg, flexWrap: 'wrap' }}
     >
       <NewMatterButton variant="primary" onCreated={onCreated} />
-      <button
-        onClick={onNewDraft}
-        className="inline-flex items-center cursor-pointer"
-        style={{
-          gap: t.space.xs,
-          padding: `${t.space.sm} ${t.space.md}`,
-          fontSize: t.size.ui,
-          fontWeight: t.weight.medium,
-          color: t.color.text,
-          backgroundColor: 'transparent',
-          border: `1px solid ${t.color.border}`,
-          borderRadius: t.radius.md,
-          transition: t.motion.fast,
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.borderColor = t.color.accent;
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.borderColor = t.color.border;
-        }}
-      >
-        <FilePlus size={13} />
-        New draft
-      </button>
+      <NewDraftButton onUseForm={onNewDraft} />
       {inboxId && (
         <Link
           to={`/matters/${inboxId}`}
@@ -298,15 +278,34 @@ function QuickActions({
 }
 
 function TemplatesGallery({
-  onChoose,
+  onChooseChat,
+  onUseForm,
 }: {
-  onChoose: (templateId: string) => void;
+  onChooseChat: (templateId: string) => void;
+  onUseForm: () => void;
 }) {
   return (
     <section style={{ marginBottom: t.space.lg }}>
       <SectionHeader
         eyebrow="Drafting templates"
-        hint="Click a template to start a draft. The dialog asks which matter to save it under."
+        hint="Click a template to draft via chat. Vidhi asks for the details and produces the document."
+        action={
+          <button
+            onClick={onUseForm}
+            className="cursor-pointer border-0 bg-transparent"
+            style={{
+              fontSize: t.size.ui,
+              color: t.color.muted,
+              padding: 0,
+              textDecoration: 'underline',
+              textDecorationColor: t.color.border,
+              textUnderlineOffset: '3px',
+            }}
+            title="Open the classic form-style draft dialog"
+          >
+            Prefer the form? →
+          </button>
+        }
       />
       <div
         style={{
@@ -320,7 +319,7 @@ function TemplatesGallery({
           return (
             <button
               key={tpl.id}
-              onClick={() => onChoose(tpl.id)}
+              onClick={() => onChooseChat(tpl.id)}
               className="cursor-pointer text-left border-0"
               style={{
                 padding: t.space.md,

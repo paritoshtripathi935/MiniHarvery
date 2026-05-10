@@ -19,6 +19,7 @@ import TodayPage from './pages/TodayPage';
 import MattersPage from './pages/MattersPage';
 import MatterDetailPage from './pages/MatterDetailPage';
 import DocumentDetailPage from './pages/DocumentDetailPage';
+import DraftingChatPage from './pages/DraftingChatPage';
 import PrintPage from './pages/PrintPage';
 import { MattersProvider } from './state/MattersContext';
 import { useTheme } from './hooks/useTheme';
@@ -44,6 +45,18 @@ export default function App() {
                 <Route
                   path="matters/:matterId/documents/:documentId"
                   element={<DocumentDetailPage />}
+                />
+                {/* Conversational drafting (PAI-11) — full-page chat that
+                    collects template fields. Both with and without a
+                    matter context: matter-less drafts pick a target
+                    matter (defaulting to Inbox) at generation time. */}
+                <Route
+                  path="drafting/:templateId"
+                  element={<DraftingChatPage />}
+                />
+                <Route
+                  path="matters/:matterId/drafting/:templateId"
+                  element={<DraftingChatPage />}
                 />
                 {/* /inbox resolves to the user's Inbox matter inside AppLayout */}
                 <Route path="inbox" element={<TodayPage />} />

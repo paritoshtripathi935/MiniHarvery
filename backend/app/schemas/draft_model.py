@@ -44,3 +44,36 @@ class GenerateDraftRequest(BaseModel):
     title: Optional[str] = None
     fields: Dict[str, object] = {}
     query_id: Optional[UUID] = None
+
+
+# ── Conversational drafting (PAI-11) ────────────────────────────────────────
+
+DraftingRole = Literal["user", "assistant"]
+
+
+class DraftingMessage(BaseModel):
+    role: DraftingRole
+    content: str
+
+
+class DraftingTurnRequest(BaseModel):
+    """POST /api/v1/drafting/{template_id}/turn body.
+
+    Stateless: the FE owns the message history and the running field map,
+    re-sending both with every turn. No new tables — the in-progress
+    session lives entirely on the client until the user hits "Generate"
+    and we persist a Document via the existing /matters/{id}/drafts
+    endpoint.
+    """
+    messages: List[DraftingMessage]
+    extracted_fields: Dict[str, object] = {}
+
+
+class DraftingTurnResponse(BaseModel):
+    """`kind="ask"` means we still need more info — `question` carries the
+    next prompt for the user. `kind="ready"` means every required field
+    has been collected and the FE can offer a "Generate draft now" CTA."""
+    kind: Literal["ask", "ready"]
+    question: Optional[str] = None
+    extracted_fields: Dict[str, object] = {}
+    missing_required: List[str] = []
