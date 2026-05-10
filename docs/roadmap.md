@@ -1,6 +1,6 @@
 # Vidhi — Roadmap & Progress
 
-> **Last updated:** 2026-05-09 (after PRs #5–#14 merged)
+> **Last updated:** 2026-05-10 (after PR #15 merged)
 > **Live deploys:** [Frontend](https://mini-harvey.netlify.app) · [Backend](https://miniharvery.onrender.com/api/v1/health) · [GitHub](https://github.com/paritoshtripathi935/MiniHarvery)
 > **Companion docs:** [database-design.md](./database-design.md), [schema.sql](./schema.sql)
 
@@ -96,6 +96,11 @@ day comes, we change one hook implementation; gating lights up everywhere.
 
 - **#14 — gpt-oss response-shape hotfix**. PR #12 routed BRIEF to gpt-oss-120b but the parser only knew the native Workers AI shape (`result.response`). gpt-oss returns the OpenAI chat-completions shape (`result.choices[0].message.content`). `cloudflare_ai` now tries native first, falls through to OpenAI-compat. Same fix applied to streaming chunks (`delta.content`).
 
+### Bug fixes (PR #15 — PAI-10)
+- **Indian Kanoon briefs failed in production.** IK's HTML doc pages 403 most non-browser clients. We had `INDIAN_KANOON_API_TOKEN` configured for search but weren't using it for brief fetches. `content_extractor.fetch_content_from_url` now detects `indiankanoon.org/doc/<tid>/` URLs and routes through the authenticated `api.indiankanoon.org/doc/<tid>/` endpoint (which returns judgment HTML in a `doc` field, fed back through the existing BS4 pipeline). HTML scrape kept as fallback.
+- **Briefs from Google-CSE results came out empty.** The generic extractor capped at 5 paragraphs of >50 chars — on most legal sites those are nav, share-bar, "subscribe to read" upsell. The LLM saw a few hundred chars of garbage and returned mostly-empty arrays. Now prefers `<article>` / `[role=main]` / `<main>` containers and collects paragraphs up to `max_chars`. Brief-fetch timeout bumped 5s → 15s; snippet-fetch default unchanged.
+- **Defense in depth.** `generate_case_brief` refuses to persist an all-empty brief built from <500 chars of input — handler turns that into a 422 with the existing "paste the judgment text directly" hint, so the user sees a real failure instead of a silently-junk doc.
+
 ### Operations
 - **Production deploys** working (Render auto-deploys from `main`, Netlify deploys frontend).
 - **Gunicorn timeout** bumped to 300s after a `WORKER TIMEOUT` killed an SSE `/answer` stream mid-flight in production. Set in Render dashboard (render.yaml is a bootstrap-only file — runtime changes need the dashboard).
@@ -126,7 +131,6 @@ day comes, we change one hook implementation; gating lights up everywhere.
 - [ ] **Code-split routes** to halve the 565 KB / 168 KB-gzip bundle. `React.lazy()` per page is a one-afternoon job.
 - [ ] **`frontend/.env.example`** with `VITE_CLERK_PUBLISHABLE_KEY` and `VITE_API_URL` placeholders so a fresh checkout doesn't need to derive the publishable key from the issuer.
 - [ ] **Pre-existing ESLint errors** in `SearchBar.tsx` / `useTheme.ts` (`react-hooks/set-state-in-effect`) — small follow-up PR.
-- [ ] **Indian Kanoon authenticated API** instead of HTML scraping. Not P0; the 403s in production logs degrade the deep-fetch, not the search itself.
 - [ ] **Document type renderers** for `authorities_table`, `note` (case_brief + pleading_draft now have UI; the other two are still placeholder).
 - [ ] **Edit existing matter** from `MatterCard` (right-click / hover menu → settings).
 - [ ] **Activity tab** in matter detail — chronological log of searches, briefs, edits.
