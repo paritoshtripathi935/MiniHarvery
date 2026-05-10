@@ -5,17 +5,21 @@ parse their own responses, but the request shape (URL, headers, payload
 envelope, streaming line protocol) is shared. Centralising it here means
 one place for retries, telemetry, model fallback, or an async migration.
 
-Two response shapes coexist on Workers AI:
+Three response variants coexist on Workers AI:
 
-- **Native** (Llama, Mistral, Qwen, …): `result.response = "text"`.
+- **Native string** (Llama, Mistral, Qwen, …): `result.response = "text"`.
 - **OpenAI-compatible** (gpt-oss-*, future imports):
   `result.choices[0].message.content = "text"`. Streaming chunks use
   `delta.content` instead of `response`. Same models also emit
   `reasoning_content` in `message`; we ignore it (the cleaned answer
   is in `content`).
+- **Parsed-JSON dict** (any model when the prompt asks for strict JSON):
+  `result.response = {...}` — Workers AI sometimes parses the model's
+  JSON output back into a dict before returning. We re-stringify so the
+  downstream caller's JSON parser sees a consistent shape.
 
 `_extract_text` / `_extract_stream_chunk` try native first, fall through
-to OpenAI-compat. New models that follow either convention just work.
+to OpenAI-compat. New models that follow any of these conventions just work.
 
 Telemetry: each call optionally takes an `on_complete` callback fired
 exactly once after the call ends — success, error, or timeout — with
@@ -99,17 +103,27 @@ def _extract_text(body: Dict[str, Any]) -> Optional[str]:
     """Pull the assistant's text out of a Cloudflare response. Tries the
     native shape (`result.response`) first because most models still use
     it; falls through to the OpenAI-compat shape
-    (`result.choices[0].message.content`) for gpt-oss-* and similar."""
+    (`result.choices[0].message.content`) for gpt-oss-* and similar.
+
+    A third variant: when the prompt is strict-JSON, some Workers AI
+    paths parse the model's JSON output and return it as a dict (or
+    list) in `result.response` rather than a string. We re-stringify
+    so downstream parsers (`_extract_json` in case_brief_generator /
+    drafting_conversation) see the same shape regardless."""
     result = body.get("result") or {}
     text = result.get("response")
     if isinstance(text, str):
         return text
+    if isinstance(text, (dict, list)):
+        return json.dumps(text)
     choices = result.get("choices") or []
     if choices:
         message = (choices[0] or {}).get("message") or {}
         content = message.get("content")
         if isinstance(content, str):
             return content
+        if isinstance(content, (dict, list)):
+            return json.dumps(content)
     return None
 
 
