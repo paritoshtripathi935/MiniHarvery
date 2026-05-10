@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, Loader2, Printer, Trash2 } from 'lucide-react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import {
   deleteDocument,
@@ -28,6 +28,12 @@ import DocumentRenderer from '../components/DocumentRenderer';
 import EditableTitle from '../components/EditableTitle';
 import MoreMenu from '../components/MoreMenu';
 import { t } from '../design/tokens';
+import {
+  briefToMarkdown,
+  downloadMarkdown,
+  draftToMarkdown,
+  slugify,
+} from '../utils/exportDocument';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -114,6 +120,30 @@ export default function DocumentDetailPage() {
     await persist({ status: next });
   }, [persist, doc]);
 
+  // Build the export-ready markdown for the current doc. Returns null for
+  // doc types whose renderer isn't yet shipped (authorities_table / note
+  // are placeholders) — the export buttons key off this and stay hidden.
+  const exportMarkdown = useCallback((): string | null => {
+    if (!doc) return null;
+    if (doc.type === 'case_brief') return briefToMarkdown(doc.content, doc.title);
+    if (doc.type === 'pleading_draft') return draftToMarkdown(doc.content, doc.title);
+    return null;
+  }, [doc]);
+
+  const onDownloadMarkdown = useCallback(() => {
+    if (!doc) return;
+    const md = exportMarkdown();
+    if (!md) return;
+    downloadMarkdown(slugify(doc.title), md);
+  }, [doc, exportMarkdown]);
+
+  const onPrint = useCallback(() => {
+    if (!doc) return;
+    const md = exportMarkdown();
+    if (!md) return;
+    navigate('/print', { state: { title: doc.title, markdown: md } });
+  }, [doc, exportMarkdown, navigate]);
+
   const onDelete = useCallback(async () => {
     if (!doc) return;
     if (!window.confirm(`Delete "${doc.title}"? This can't be undone from the UI.`)) {
@@ -179,6 +209,9 @@ export default function DocumentDetailPage() {
         onTitleCommit={onTitleCommit}
         onToggleStatus={onToggleStatus}
         onDelete={onDelete}
+        onDownloadMarkdown={onDownloadMarkdown}
+        onPrint={onPrint}
+        canExport={exportMarkdown() !== null}
         onBack={() => navigate(`/matters/${matterId}`)}
       />
 
@@ -205,6 +238,9 @@ function DocumentHeader({
   onTitleCommit,
   onToggleStatus,
   onDelete,
+  onDownloadMarkdown,
+  onPrint,
+  canExport,
   onBack,
 }: {
   doc: DocumentRecord;
@@ -212,8 +248,33 @@ function DocumentHeader({
   onTitleCommit: (next: string) => void;
   onToggleStatus: () => void;
   onDelete: () => void;
+  onDownloadMarkdown: () => void;
+  onPrint: () => void;
+  canExport: boolean;
   onBack: () => void;
 }) {
+  const menuItems = [
+    ...(canExport
+      ? [
+          {
+            label: 'Download as Markdown',
+            onClick: onDownloadMarkdown,
+            icon: Download,
+          },
+          {
+            label: 'Print / save as PDF',
+            onClick: onPrint,
+            icon: Printer,
+          },
+        ]
+      : []),
+    {
+      label: 'Delete document',
+      onClick: onDelete,
+      danger: true,
+      icon: Trash2,
+    },
+  ];
   return (
     <header
       className="flex items-center flex-shrink-0"
@@ -295,16 +356,7 @@ function DocumentHeader({
 
         <StatusPill status={doc.status} onToggle={onToggleStatus} />
 
-        <MoreMenu
-          items={[
-            {
-              label: 'Delete document',
-              onClick: onDelete,
-              danger: true,
-              icon: Trash2,
-            },
-          ]}
-        />
+        <MoreMenu items={menuItems} />
       </div>
     </header>
   );

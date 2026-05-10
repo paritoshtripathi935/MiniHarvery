@@ -19,10 +19,16 @@
  *   · Streaming falls back to a single serif block.
  */
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Check, Loader2, Scale, ArrowUpRight } from 'lucide-react';
+import { Copy, Check, Download, Loader2, Printer, Scale, ArrowUpRight } from 'lucide-react';
 import type { Message, Citation, LegalSearchResult, LlmCallMetrics } from '../types';
 import CitationChip from './CitationChip';
+import {
+  downloadMarkdown,
+  slugify,
+  transcriptToMarkdown,
+} from '../utils/exportDocument';
 
 interface Props {
   /**
@@ -195,6 +201,7 @@ export default function Brief({
   onFollowUp,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
 
   // Empty state — no active thread yet
   if (messages.length === 0) {
@@ -225,11 +232,29 @@ export default function Brief({
     .filter(Boolean)
     .join('\n\n---\n\n');
 
+  // Export is only meaningful once at least one turn has fully landed.
+  // While any turn is mid-stream we keep the export buttons hidden so
+  // the user doesn't get a half-formed brief.
+  const anyStreaming = messages.some(m => m.isAnswering || m.isSearching);
+  const canExport = !anyStreaming && fullTranscript.length > 0;
+
   const handleCopy = async () => {
     if (!fullTranscript) return;
     await navigator.clipboard.writeText(fullTranscript);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    if (!canExport) return;
+    const md = transcriptToMarkdown(messages);
+    downloadMarkdown(slugify(rootMessage.query), md);
+  };
+
+  const handlePrint = () => {
+    if (!canExport) return;
+    const md = transcriptToMarkdown(messages);
+    navigate('/print', { state: { title: rootMessage.query, markdown: md } });
   };
 
   return (
@@ -278,20 +303,37 @@ export default function Brief({
             </h1>
           </div>
           {fullTranscript && (
-            <button
-              onClick={handleCopy}
-              className="flex-shrink-0 flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded border cursor-pointer transition-colors"
-              style={{
-                backgroundColor: 'transparent',
-                borderColor: 'var(--border)',
-                color: 'var(--text-muted)',
-                letterSpacing: '0.1em',
-              }}
-              title="Copy brief to clipboard"
-            >
-              {copied ? <Check size={10} /> : <Copy size={10} />}
-              {copied ? 'COPIED' : 'COPY BRIEF'}
-            </button>
+            <div className="flex-shrink-0 flex items-center gap-1.5">
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded border cursor-pointer transition-colors"
+                style={briefActionStyle}
+                title="Copy brief to clipboard"
+              >
+                {copied ? <Check size={10} /> : <Copy size={10} />}
+                {copied ? 'COPIED' : 'COPY'}
+              </button>
+              {canExport && (
+                <>
+                  <button
+                    onClick={handleDownload}
+                    className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded border cursor-pointer transition-colors"
+                    style={briefActionStyle}
+                    title="Download as Markdown"
+                  >
+                    <Download size={10} /> MD
+                  </button>
+                  <button
+                    onClick={handlePrint}
+                    className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded border cursor-pointer transition-colors"
+                    style={briefActionStyle}
+                    title="Print or save as PDF"
+                  >
+                    <Printer size={10} /> PRINT
+                  </button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -602,6 +644,13 @@ function MetricsFooter({ metrics }: { metrics: LlmCallMetrics }) {
     </div>
   );
 }
+
+const briefActionStyle: React.CSSProperties = {
+  backgroundColor: 'transparent',
+  borderColor: 'var(--border)',
+  color: 'var(--text-muted)',
+  letterSpacing: '0.1em',
+};
 
 /** Trim the leading `@cf/<vendor>/` so the model strip stays compact. */
 function modelLabel(slug: string): string {
