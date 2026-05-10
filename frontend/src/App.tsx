@@ -19,6 +19,7 @@ import TodayPage from './pages/TodayPage';
 import MattersPage from './pages/MattersPage';
 import MatterDetailPage from './pages/MatterDetailPage';
 import DocumentDetailPage from './pages/DocumentDetailPage';
+import PrintPage from './pages/PrintPage';
 import { MattersProvider } from './state/MattersContext';
 import { useTheme } from './hooks/useTheme';
 
@@ -33,6 +34,9 @@ export default function App() {
         <BrowserRouter>
           <MattersProvider>
             <Routes>
+              {/* Chrome-less route — the print page renders pure document
+                  body so the OS print dialog produces a clean PDF. */}
+              <Route path="print" element={<PrintPage />} />
               <Route element={<AppLayout />}>
                 <Route index element={<TodayPage />} />
                 <Route path="matters" element={<MattersPage />} />
