@@ -476,3 +476,39 @@ export async function generatePleadingDraft(
   const json = await response.json();
   return { document: json.data, metrics: json.metrics ?? undefined };
 }
+
+// ── Conversational drafting (PAI-11) ─────────────────────────────────────
+
+export interface DraftingChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface DraftingTurnResponse {
+  kind: 'ask' | 'ready';
+  question: string | null;
+  extracted_fields: Record<string, unknown>;
+  missing_required: string[];
+}
+
+export async function draftingTurn(
+  templateId: string,
+  messages: DraftingChatMessage[],
+  extractedFields: Record<string, unknown>,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<DraftingTurnResponse> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/drafting/${templateId}/turn`,
+    {
+      method: 'POST',
+      headers: await buildHeaders(userId, getToken),
+      body: JSON.stringify({ messages, extracted_fields: extractedFields }),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Drafting turn failed (${response.status})`);
+  }
+  return (await response.json()).data;
+}
