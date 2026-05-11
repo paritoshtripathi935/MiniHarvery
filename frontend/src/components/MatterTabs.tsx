@@ -2,9 +2,10 @@
  * MatterTabs — primary navigation inside a matter.
  *
  * Tabs:
- *   Research   → the brief + composer + thread picker
- *   Documents  → case briefs, drafts, authorities (count badge)
- *   Settings   → matter metadata (parties, court, cause number, status)
+ *   Research     → the brief + composer + thread picker
+ *   Documents    → case briefs, drafts, notes (count badge)
+ *   Authorities  → pinned cases for the Table of Authorities
+ *   Settings     → matter metadata (parties, court, cause number, status)
  *
  * For now we keep tab state in the component's parent (MatterDetailPage)
  * rather than as URL sub-routes, to avoid bloating routing surface in
@@ -12,15 +13,16 @@
  * Document detail pages exist.
  */
 import type { ComponentType, CSSProperties } from 'react';
-import { FileText, Settings, MessageSquareText } from 'lucide-react';
+import { Bookmark, FileText, Settings, MessageSquareText } from 'lucide-react';
 import { t } from '../design/tokens';
 
-export type MatterTab = 'research' | 'documents' | 'settings';
+export type MatterTab = 'research' | 'documents' | 'authorities' | 'settings';
 
 interface Props {
   active: MatterTab;
   onChange: (tab: MatterTab) => void;
   documentCount: number;
+  authorityCount?: number;
 }
 
 interface TabDef {
@@ -30,10 +32,16 @@ interface TabDef {
   badge?: number;
 }
 
-export default function MatterTabs({ active, onChange, documentCount }: Props) {
+export default function MatterTabs({
+  active,
+  onChange,
+  documentCount,
+  authorityCount = 0,
+}: Props) {
   const tabs: TabDef[] = [
     { id: 'research', label: 'Research', icon: MessageSquareText },
     { id: 'documents', label: 'Documents', icon: FileText, badge: documentCount },
+    { id: 'authorities', label: 'Authorities', icon: Bookmark, badge: authorityCount },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

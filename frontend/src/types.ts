@@ -191,6 +191,31 @@ export type DocumentRecord =
   | AuthoritiesTableDocument
   | NoteDocument;
 
+// ── Authority (pinned case in a matter — feeds Table of Authorities) ─────
+
+/** One pinned case scoped to a matter. The IK tid (when present) or
+ * lowercased case name de-dupes when the same case is pinned from
+ * multiple surfaces — pinning twice is a no-op on the server. */
+export interface Authority {
+  id: string;
+  matter_id: string;
+  case_name: string;
+  citation: string | null;
+  court: string | null;
+  year: number | null;
+  source_url: string | null;
+  indian_kanoon_tid: string | null;
+  proposition: string;
+  paragraphs: string[];
+  notes: string | null;
+  first_pinned_from_document_id: string | null;
+  first_pinned_from_thread_id: string | null;
+  first_pinned_from_answer_id: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Thread (server history) ───────────────────────────────────────────────
 
 export interface ThreadSummary {

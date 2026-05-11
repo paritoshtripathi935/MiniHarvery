@@ -41,6 +41,8 @@ import {
   fetchThread,
   getMatter,
   generateCaseBrief,
+  listAuthorities,
+  pinAuthority,
   type ServerMessage,
 } from '../services/api';
 import type {
@@ -65,6 +67,7 @@ import MatterTabs, { type MatterTab } from '../components/MatterTabs';
 import NewDraftDialog from '../components/NewDraftDialog';
 import NewDraftButton from '../components/NewDraftButton';
 import MatterSettingsForm from '../components/MatterSettingsForm';
+import AuthoritiesPanel from '../components/AuthoritiesPanel';
 import {
   Inspector,
   InspectorToggleGroup,
@@ -130,6 +133,11 @@ export default function MatterDetailPage() {
   const [pinnedUrls, setPinnedUrls] = useState<Set<string>>(new Set());
   const [pinnedResults, setPinnedResults] = useState<LegalSearchResult[]>([]);
   const [flashUrl, setFlashUrl] = useState<string | undefined>(undefined);
+  // Pinned-citation source URLs for the active matter — used to mark
+  // already-pinned chips in Brief.tsx. Re-fetched on matter change.
+  const [pinnedCitationUrls, setPinnedCitationUrls] = useState<Set<string>>(
+    new Set(),
+  );
 
   const [activeTab, setActiveTab] = useState<MatterTab>('research');
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -152,6 +160,7 @@ export default function MatterDetailPage() {
     setActiveThreadId(null);
     setActiveTab('research');
     setInspectorOpen(false);
+    setPinnedCitationUrls(new Set());
     loadedThreadIds.current = new Set();
 
     (async () => {
@@ -169,6 +178,19 @@ export default function MatterDetailPage() {
           timestamp: new Date(th.updated_at),
         }));
         setMessages(placeholders);
+
+        // Fire-and-forget — the chip pin status is a nice-to-have hint,
+        // not load-bearing. Failures are logged and ignored.
+        listAuthorities(matterId, user?.id, getAuthToken)
+          .then(rows => {
+            if (cancelled) return;
+            setPinnedCitationUrls(
+              new Set(rows.map(a => a.source_url).filter((u): u is string => Boolean(u))),
+            );
+          })
+          .catch(err => {
+            console.warn('Failed to load matter authorities:', err);
+          });
 
         if (detail.threads.length > 0) {
           const newest = detail.threads[0];
@@ -405,6 +427,71 @@ export default function MatterDetailPage() {
     });
   };
 
+  // IK doc URLs → tid so we can dedupe against IK-sourced authorities.
+  const ikTidFromUrl = (url: string | null | undefined): string | undefined => {
+    if (!url) return undefined;
+    const m = /indiankanoon\.org\/doc\/(\d+)\/?/.exec(url);
+    return m ? m[1] : undefined;
+  };
+
+  const handlePinCitation = useCallback(
+    async (
+      citation: Citation,
+      results: LegalSearchResult[],
+      // The Brief passes the message id (a query id, not a persisted
+      // answer UUID); we don't have a direct answer-id at the FE today.
+      // first_pinned_from_answer_id is therefore left null in v1.
+      _answerId?: string,
+    ) => {
+      if (!matterId) return;
+      // Find the search-result the citation came from so we get court/year
+      // /jurisdiction without re-parsing the citation string.
+      const needle = citation.text.toLowerCase();
+      const hit =
+        results.find(r =>
+          r.citation ? r.citation.toLowerCase().includes(needle) : false,
+        ) ?? results.find(r => r.title.toLowerCase().includes(needle));
+
+      const sourceUrl = citation.url ?? hit?.url ?? undefined;
+      try {
+        const { authority } = await pinAuthority(
+          matterId,
+          {
+            case_name: hit?.title ?? citation.text,
+            citation: hit?.citation ?? citation.text,
+            court: hit?.jurisdiction,
+            year: hit?.year,
+            source_url: sourceUrl,
+            indian_kanoon_tid: ikTidFromUrl(sourceUrl),
+            first_pinned_from_thread_id:
+              latestTurn?.threadId &&
+              !latestTurn.threadId.startsWith('temp:')
+                ? latestTurn.threadId
+                : undefined,
+            // answer_id flows through query_id paths server-side; we
+            // pass it as the message id here. The repo stores it via
+            // first_pinned_from_answer_id when set. Skipped for now —
+            // FE doesn't have the persisted answer_id, only the query id.
+          },
+        );
+        if (sourceUrl) {
+          setPinnedCitationUrls(prev => {
+            const next = new Set(prev);
+            next.add(sourceUrl);
+            return next;
+          });
+        }
+        // Light prefetch — the user's likely to flip to the Authorities
+        // tab next. We just touch the list so the SWR-style re-render
+        // there shows fresh data.
+        void authority;
+      } catch (err) {
+        console.warn('Failed to pin citation:', err);
+      }
+    },
+    [matterId, latestTurn?.threadId],
+  );
+
   const handleCitationClick = (
     citation: Citation,
     results: LegalSearchResult[],
@@ -530,10 +617,12 @@ export default function MatterDetailPage() {
             activeThread={activeThread}
             isLoading={isLoading}
             pinnedUrls={pinnedUrls}
+            pinnedCitationUrls={pinnedCitationUrls}
             onSelectThread={handleSelectThread}
             onNewThread={handleNewThread}
             onSearch={handleSearch}
             onCitationClick={handleCitationClick}
+            onPinCitation={handlePinCitation}
             latestTurnThreadId={latestTurn?.threadId}
           />
         )}
@@ -544,6 +633,12 @@ export default function MatterDetailPage() {
             onOpen={handleOpenDocument}
             onNewBrief={handleNewBriefFromTab}
             onNewDraft={() => setDraftDialogOpen(true)}
+          />
+        )}
+        {activeTab === 'authorities' && activeMatter && (
+          <AuthoritiesPanel
+            matterId={matterId}
+            matterTitle={activeMatter.title}
           />
         )}
         {activeTab === 'settings' && activeMatter && (
@@ -691,10 +786,12 @@ function ResearchView({
   activeThread,
   isLoading,
   pinnedUrls,
+  pinnedCitationUrls,
   onSelectThread,
   onNewThread,
   onSearch,
   onCitationClick,
+  onPinCitation,
   latestTurnThreadId,
 }: {
   messages: Message[];
@@ -702,10 +799,16 @@ function ResearchView({
   activeThread: Message[];
   isLoading: boolean;
   pinnedUrls: Set<string>;
+  pinnedCitationUrls: Set<string>;
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onSearch: (query: string, parentThread?: string) => void;
   onCitationClick: (c: Citation, results: LegalSearchResult[]) => void;
+  onPinCitation: (
+    citation: Citation,
+    results: LegalSearchResult[],
+    answerId?: string,
+  ) => Promise<void> | void;
   latestTurnThreadId: string | undefined;
 }) {
   const isEmpty = activeThread.length === 0;
@@ -741,6 +844,8 @@ function ResearchView({
             pinnedUrls={pinnedUrls}
             onCitationClick={onCitationClick}
             onFollowUp={(query: string) => onSearch(query, latestTurnThreadId)}
+            onPinCitation={onPinCitation}
+            pinnedCitationUrls={pinnedCitationUrls}
           />
         )}
       </div>

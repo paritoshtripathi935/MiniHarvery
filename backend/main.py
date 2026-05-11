@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.settings import settings
+from app.api.v1.authority_handler import router as authority_router
 from app.api.v1.document_handler import router as document_router
 from app.api.v1.drafting_handler import router as drafting_router
 from app.api.v1.matter_handler import router as matter_router
@@ -38,6 +39,7 @@ app.include_router(thread_router, prefix="/api/v1")
 app.include_router(matter_router, prefix="/api/v1")
 app.include_router(document_router, prefix="/api/v1")
 app.include_router(drafting_router, prefix="/api/v1")
+app.include_router(authority_router, prefix="/api/v1")
 
 
 @app.get("/health")

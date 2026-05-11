@@ -1,6 +1,6 @@
 # Vidhi — Roadmap & Progress
 
-> **Last updated:** 2026-05-11 (after PRs #16–#18 merged + a Cloudflare-shape hotfix)
+> **Last updated:** 2026-05-11 (after Sprint 4 lands the Authorities Table)
 > **Live deploys:** [Frontend](https://mini-harvey.netlify.app) · [Backend](https://miniharvery.onrender.com/api/v1/health) · [GitHub](https://github.com/paritoshtripathi935/MiniHarvery)
 > **Companion docs:** [database-design.md](./database-design.md), [schema.sql](./schema.sql)
 
@@ -111,6 +111,65 @@ day comes, we change one hook implementation; gating lights up everywhere.
 
 - **#18 — First-pass-draft notice**. The four templates (plaint / writ-226 / anticipatory bail / legal notice) are scaffolds modelled on Indian pleading conventions, **not** adapted from any specific HC's Civil/Original-Side Rules, CPC Appendix A, or CrPC Schedule II. We don't render vakalatnama, affidavit-in-support, court-fee endorsement, or per-court signature blocks. A muted info banner above the Edit/Preview toggle on every `pleading_draft` document tells the advocate to verify against their court's rules before filing. Per-court rule grounding and schedule-of-forms grounding are deferred until there's a clear use signal.
 
+### Sprint 4 — Authorities Table (PR TBD on `feat/authorities-table`)
+
+The headline new feature for Sprint 4. Per-matter pinned cases that feed a
+Table-of-Authorities export — closes the loop between research, briefs, and
+the document an advocate actually hands a partner.
+
+- **Migration 0008 — `authorities` table**. One row per `(matter, case)`,
+  idempotent on `(matter_id, indian_kanoon_tid)` (canonical de-dup key when
+  the case comes from IK) with a fallback partial unique on `(matter_id,
+  lower(case_name))` for non-IK cases. Provenance via nullable
+  `first_pinned_from_{document,thread,answer}_id` (`ON DELETE SET NULL` so
+  deleting the source document doesn't cascade-delete the authority).
+  `sort_order` for v1.5 drag-to-reorder, present from day one to avoid a
+  later migration. Pure additive — safe to deploy independently of code.
+
+- **4 new endpoints** in `app/api/v1/authority_handler.py`:
+  `GET /matters/{id}/authorities`, idempotent `POST` (returns 201 on
+  insert, 200 on existing match), `PATCH /authorities/{id}` (advocate-
+  authored fields only), soft-delete `DELETE`. Repo methods in
+  `repositories.py`; `pin_authority` returns `(row, created)` so the
+  handler can pick the right status code.
+
+- **Auto-pin the brief subject**. When `POST /matters/{id}/case-briefs`
+  succeeds, the same transaction calls `pin_authority` with the brief's
+  title, citation, source URL, and an IK tid parsed from the URL (when
+  it's an IK doc URL). Best-effort: a pin failure logs and continues —
+  the brief itself is the user's primary artefact and must not fail
+  because of a side-effect.
+
+- **Frontend Authorities tab**. New `AuthoritiesPanel` slotted between
+  Documents and Settings on the matter-detail page; `MatterTabs` grows a
+  fourth tab with a count badge. The panel reuses `useDebouncedSave` for
+  per-row autosave of proposition/paragraphs/notes, mirrors
+  `NewDraftDialog`'s shape in `AddAuthorityDialog`, and renders a
+  notes-toggleable `AuthorityRow` (notes auto-opens when a row already
+  carries them). Empty state is the design-system saffron-icon-on-dashed
+  one-CTA pattern, not four-equal-columns vibecode.
+
+- **Pin from the chat answer**. `CitationChip` grows a hover-revealed
+  "Pin to authorities" icon button (case citations only). `Brief.tsx`
+  accepts an optional `onPinCitation` + `pinnedCitationUrls` set; the
+  page wires this to `pinAuthority`, pulling court/year/jurisdiction
+  from the matching `search_results` row to seed the pin without re-
+  parsing the citation string. Already-pinned chips render a filled
+  bookmark-check icon so the user doesn't try to pin the same case twice.
+
+- **Export as Table of Authorities**. New `utils/exportAuthorities.ts`
+  serialises the authorities list to standard Indian/British-Commonwealth
+  ToA Markdown (numbered cases with proposition, paragraphs cited, source
+  link). Two top-of-panel buttons reuse the existing `downloadMarkdown`
+  helper and the chrome-less `/print` route from PAI-11 — no jspdf, no
+  new infrastructure.
+
+- **Carve-outs documented in `.claude/AUTHORITIES_TABLE_DESIGN.md`**:
+  pinning from inside a brief's `EditableList` citation lists is v1.1;
+  per-occurrence tracking (one row per case, not per citation) is v1+
+  if a "jump back to the cite" surface appears; cross-matter authority
+  reuse and LLM-extracted paragraph numbers are explicit non-goals.
+
 ### Operations
 - **Production deploys** working (Render auto-deploys from `main`, Netlify deploys frontend).
 - **Gunicorn timeout** bumped to 300s after a `WORKER TIMEOUT` killed an SSE `/answer` stream mid-flight in production. Set in Render dashboard (render.yaml is a bootstrap-only file — runtime changes need the dashboard).
@@ -124,7 +183,6 @@ day comes, we change one hook implementation; gating lights up everywhere.
 
 | Feature | Leverage | Effort | Notes |
 |---|---|---|---|
-| **Authorities Table** | high | medium | Pin cases across threads → ToA. Needs cross-thread pin tracking in DB. |
 | **Limitation Calculator** | medium | small | One-screen utility. No DB needed. |
 | **Inbox label tagging** | medium | small | `tags` column on `threads` (jsonb), filter chips. |
 | **Today widgets** ("hearings this week", "drafts due") | high | medium | Needs `hearings` table + cron task or calendar integration. |
@@ -143,7 +201,8 @@ day comes, we change one hook implementation; gating lights up everywhere.
 - [ ] **Code-split routes** to halve the 588 KB / 173 KB-gzip bundle (chat page + print page bumped it). `React.lazy()` per page is a one-afternoon job.
 - [ ] **`frontend/.env.example`** with `VITE_CLERK_PUBLISHABLE_KEY` and `VITE_API_URL` placeholders so a fresh checkout doesn't need to derive the publishable key from the issuer.
 - [ ] **Pre-existing ESLint errors** in `SearchBar.tsx` / `useTheme.ts` (`react-hooks/set-state-in-effect`) — small follow-up PR.
-- [ ] **Document type renderers** for `authorities_table`, `note` (case_brief + pleading_draft now have UI; the other two are still placeholder).
+- [ ] **Document type renderers** for `note` (case_brief + pleading_draft have UI; `authorities_table` is reserved as a future "rendered ToA snapshot" document type once a real user asks for one — the live data now lives in the `authorities` table).
+- [ ] **Authorities v1.1**: pin from inside a brief's `EditableList` citation lists; per-occurrence tracking (one row per cite, not per case) if a "jump back to the cite" surface appears; drag-to-reorder via the existing `sort_order` column.
 - [ ] **Edit existing matter** from `MatterCard` (right-click / hover menu → settings).
 - [ ] **Activity tab** in matter detail — chronological log of searches, briefs, edits.
 - [ ] **`prompt_hash` population + `call_site` constraint widening** — required before the LLM cache PR, and now also before drafting-chat turns can be persisted to telemetry. Per call site: rewrite → SHA-256 of raw query; brief → judgment-text fingerprint + URL; draft → canonicalised template + fields; drafting_chat → conversation hash. The constraint widening (add `'drafting_chat'` to the `IN` list) ships with the same migration.
@@ -179,11 +238,11 @@ day comes, we change one hook implementation; gating lights up everywhere.
 
 ```
 backend/
-├── alembic/versions/       # Migrations 0001..0007
+├── alembic/versions/       # Migrations 0001..0008
 ├── app/
 │   ├── api/v1/             # query_handler, thread_handler, matter_handler,
-│   │                       # document_handler, drafting_handler
-│   │                       # (handlers are thin)
+│   │                       # document_handler, drafting_handler,
+│   │                       # authority_handler (handlers are thin)
 │   ├── api/deps.py         # resolve_caller (auth gate, ensure_inbox)
 │   ├── core/
 │   │   ├── auth.py         # Clerk JWT verification (was utils/clerk_auth.py)
@@ -196,7 +255,8 @@ backend/
 │   ├── schemas/            # Pydantic request DTOs (was app/models/)
 │   │   ├── query_model.py
 │   │   ├── search_model.py
-│   │   └── draft_model.py
+│   │   ├── draft_model.py
+│   │   └── authority_model.py
 │   └── services/
 │       ├── cloudflare_ai.py            # HTTP scaffold + on_complete telemetry
 │       ├── search_pipeline.py          # /search workflow
@@ -230,6 +290,8 @@ frontend/
 │   │                       # NewDraftButton (chat-first popover),
 │   │                       # CaseBriefEditor, EditableList, MatterCard,
 │   │                       # ThreadPicker, Inspector, MatterTabs,
+│   │                       # AuthoritiesPanel, AuthorityRow,
+│   │                       # AddAuthorityDialog, CitationChip (+pin),
 │   │                       # NewMatterButton, FeatureGate, …
 │   ├── hooks/              # useDebouncedSave, useDismissable, useTheme,
 │   │                       # useUserMode
@@ -237,7 +299,8 @@ frontend/
 │   │   ├── api.ts          # fetch wrappers (incl. draftingTurn)
 │   │   └── draftTemplates.ts # lazy module-level cache for /draft-templates
 │   ├── utils/
-│   │   └── exportDocument.ts  # markdown serialisers + Blob download helper
+│   │   ├── exportDocument.ts    # brief/draft/transcript serialisers + downloader
+│   │   └── exportAuthorities.ts # Table-of-Authorities markdown serialiser
 │   └── types.ts            # discriminated DocumentRecord, LlmCallMetrics, …
 └── .env.local              # (gitignored) Clerk publishable key + VITE_API_URL
 
@@ -250,8 +313,9 @@ docs/
 ├── SESSION_NOTES.md        # quick-resume cheatsheet
 ├── REVIEW_BACKEND.md       # pre-Sprint-3 review (PR #5–#7 came out of it)
 ├── REVIEW_FRONTEND.md      # pre-Sprint-3 review (PR #5, #8 came out of it)
-├── DRAFTING_WORKSHOP_DESIGN.md  # signed-off design memo for PR #10
-└── CLOUDFLARE_MODEL_RESEARCH.md # routing rationale for PR #12
+├── DRAFTING_WORKSHOP_DESIGN.md   # signed-off design memo for PR #10
+├── AUTHORITIES_TABLE_DESIGN.md   # signed-off design memo for Sprint 4
+└── CLOUDFLARE_MODEL_RESEARCH.md  # routing rationale for PR #12
 ```
 
 ---

@@ -363,4 +363,53 @@ CREATE INDEX IF NOT EXISTS llm_calls_call_site_recent_idx
 CREATE INDEX IF NOT EXISTS llm_calls_prompt_hash_idx
     ON llm_calls (call_site, prompt_hash) WHERE prompt_hash IS NOT NULL;
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- authorities — per-matter pinned cases for Table-of-Authorities generation.
+-- One row per (matter, case). The IK tid (when present) or lowercased
+-- case_name de-dupes when the same case is pinned from multiple surfaces.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS authorities (
+    id                              uuid         PRIMARY KEY DEFAULT gen_random_uuid(),
+    matter_id                       uuid         NOT NULL REFERENCES matters(id) ON DELETE CASCADE,
+    user_id                         uuid         NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+
+    -- Case identity
+    case_name                       text         NOT NULL,
+    citation                        text,
+    court                           text,
+    year                            smallint,
+    source_url                      text,
+    indian_kanoon_tid               text,
+
+    -- Advocate-authored
+    proposition                     text         NOT NULL DEFAULT '',
+    paragraphs                      jsonb        NOT NULL DEFAULT '[]'::jsonb,
+    notes                           text,
+
+    -- Provenance — nullable + ON DELETE SET NULL so deleting the source
+    -- document/thread/answer doesn't cascade-delete the authority.
+    first_pinned_from_document_id   uuid         REFERENCES documents(id) ON DELETE SET NULL,
+    first_pinned_from_thread_id     uuid         REFERENCES threads(id)   ON DELETE SET NULL,
+    first_pinned_from_answer_id     uuid         REFERENCES answers(id)   ON DELETE SET NULL,
+
+    sort_order                      integer      NOT NULL DEFAULT 0,
+    created_at                      timestamptz  NOT NULL DEFAULT now(),
+    updated_at                      timestamptz  NOT NULL DEFAULT now(),
+    deleted_at                      timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS authorities_matter_recent_idx
+    ON authorities (matter_id, created_at DESC) WHERE deleted_at IS NULL;
+
+-- IK tid is the canonical de-dup key when present
+CREATE UNIQUE INDEX IF NOT EXISTS authorities_matter_ik_uq
+    ON authorities (matter_id, indian_kanoon_tid)
+    WHERE indian_kanoon_tid IS NOT NULL AND deleted_at IS NULL;
+
+-- Fallback de-dup for non-IK cases: case-insensitive name within matter
+CREATE UNIQUE INDEX IF NOT EXISTS authorities_matter_name_uq
+    ON authorities (matter_id, lower(case_name))
+    WHERE indian_kanoon_tid IS NULL AND deleted_at IS NULL;
+
 COMMIT;
