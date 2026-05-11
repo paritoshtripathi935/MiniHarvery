@@ -14,9 +14,11 @@ over a 30+ second round trip.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -58,6 +60,34 @@ class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[Dict[str, Any]] = Field(default=None)
     status: Optional[str] = None
+
+
+# IK doc URLs look like https://indiankanoon.org/doc/12345/ — the tid is
+# the canonical de-dup key for cases coming out of IK search results.
+_IK_DOC_PATH = re.compile(r"^/doc/(\d+)/?$")
+
+
+def _parse_indian_kanoon_tid(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if "indiankanoon.org" not in (parsed.netloc or ""):
+        return None
+    m = _IK_DOC_PATH.match(parsed.path or "")
+    return m.group(1) if m else None
+
+
+def _proposition_from_brief(brief: Dict[str, Any]) -> str:
+    """Seed the proposition field from the brief's ratio/holding so the
+    advocate has a meaningful starting point — they can refine in-place."""
+    for key in ("ratio", "holding"):
+        items = brief.get(key) or []
+        if items and isinstance(items[0], str) and items[0].strip():
+            return items[0].strip()[:1000]
+    return ""
 
 
 def _metrics_payload(metrics: Optional[LlmCallMetrics]) -> Optional[Dict[str, Any]]:
@@ -147,6 +177,27 @@ async def create_case_brief(
                     document_id=doc.id,
                     error_class=metrics.error_class,
                 )
+
+            # Auto-pin the brief's subject case as an authority on the
+            # matter. Idempotent — regenerating a brief or re-briefing the
+            # same case won't create duplicates. Best-effort: a pin failure
+            # must not block the brief itself, which is the user's
+            # primary artefact.
+            try:
+                await repo.pin_authority(
+                    db,
+                    matter_id=matter_id,
+                    user_id=caller.user_id,
+                    case_name=title,
+                    citation=brief.get("citation"),
+                    source_url=source_url,
+                    indian_kanoon_tid=_parse_indian_kanoon_tid(source_url),
+                    proposition=_proposition_from_brief(dict(brief)),
+                    first_pinned_from_document_id=doc.id,
+                )
+            except Exception:
+                logger.exception("Auto-pin authority failed for brief %s", doc.id)
+
             await db.commit()
         except Exception:
             await db.rollback()

@@ -527,3 +527,76 @@ class LlmCall(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
+
+
+# ── authorities ─────────────────────────────────────────────────────────────
+# Per-matter pinned cases — the data behind a Table of Authorities. One row
+# per (matter, case); the IK tid (when present) or lowercased case_name
+# de-dupes when the same case is pinned from multiple surfaces.
+class Authority(Base):
+    __tablename__ = "authorities"
+    __table_args__ = (
+        Index(
+            "authorities_matter_recent_idx",
+            "matter_id", text("created_at DESC"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "authorities_matter_ik_uq",
+            "matter_id", "indian_kanoon_tid",
+            unique=True,
+            postgresql_where=text(
+                "indian_kanoon_tid IS NOT NULL AND deleted_at IS NULL"
+            ),
+        ),
+        Index(
+            "authorities_matter_name_uq",
+            "matter_id", text("lower(case_name)"),
+            unique=True,
+            postgresql_where=text(
+                "indian_kanoon_tid IS NULL AND deleted_at IS NULL"
+            ),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    matter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matters.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    case_name: Mapped[str] = mapped_column(Text, nullable=False)
+    citation: Mapped[Optional[str]] = mapped_column(Text)
+    court: Mapped[Optional[str]] = mapped_column(Text)
+    year: Mapped[Optional[int]] = mapped_column(SmallInteger)
+    source_url: Mapped[Optional[str]] = mapped_column(Text)
+    indian_kanoon_tid: Mapped[Optional[str]] = mapped_column(Text)
+    proposition: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("''")
+    )
+    paragraphs: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    first_pinned_from_document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    first_pinned_from_thread_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("threads.id", ondelete="SET NULL")
+    )
+    first_pinned_from_answer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("answers.id", ondelete="SET NULL")
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True))

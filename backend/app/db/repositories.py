@@ -899,6 +899,187 @@ async def soft_delete_document(
     return result.rowcount > 0
 
 
+# ── Authorities ─────────────────────────────────────────────────────────────
+
+def authority_to_dict(a: models.Authority) -> dict:
+    return {
+        "id": str(a.id),
+        "matter_id": str(a.matter_id),
+        "case_name": a.case_name,
+        "citation": a.citation,
+        "court": a.court,
+        "year": a.year,
+        "source_url": a.source_url,
+        "indian_kanoon_tid": a.indian_kanoon_tid,
+        "proposition": a.proposition,
+        "paragraphs": a.paragraphs or [],
+        "notes": a.notes,
+        "first_pinned_from_document_id": (
+            str(a.first_pinned_from_document_id)
+            if a.first_pinned_from_document_id else None
+        ),
+        "first_pinned_from_thread_id": (
+            str(a.first_pinned_from_thread_id)
+            if a.first_pinned_from_thread_id else None
+        ),
+        "first_pinned_from_answer_id": (
+            str(a.first_pinned_from_answer_id)
+            if a.first_pinned_from_answer_id else None
+        ),
+        "sort_order": a.sort_order,
+        "created_at": a.created_at.isoformat(),
+        "updated_at": a.updated_at.isoformat(),
+    }
+
+
+async def list_authorities(
+    db: AsyncSession, *, matter_id: uuid.UUID, user_id: uuid.UUID,
+) -> List[dict]:
+    stmt = (
+        select(models.Authority)
+        .where(models.Authority.matter_id == matter_id)
+        .where(models.Authority.user_id == user_id)
+        .where(models.Authority.deleted_at.is_(None))
+        .order_by(models.Authority.sort_order, models.Authority.created_at)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    return [authority_to_dict(a) for a in rows]
+
+
+async def find_authority_by_dedup_key(
+    db: AsyncSession,
+    *,
+    matter_id: uuid.UUID,
+    user_id: uuid.UUID,
+    indian_kanoon_tid: Optional[str],
+    case_name: str,
+) -> Optional[models.Authority]:
+    """Look up an existing authority by canonical de-dup key.
+
+    IK tid wins when present; otherwise we match on lower(case_name) to
+    mirror the partial unique indexes. Returns None when neither matches.
+    """
+    from sqlalchemy import func
+    stmt = (
+        select(models.Authority)
+        .where(models.Authority.matter_id == matter_id)
+        .where(models.Authority.user_id == user_id)
+        .where(models.Authority.deleted_at.is_(None))
+    )
+    if indian_kanoon_tid:
+        stmt = stmt.where(models.Authority.indian_kanoon_tid == indian_kanoon_tid)
+    else:
+        stmt = stmt.where(
+            models.Authority.indian_kanoon_tid.is_(None),
+            func.lower(models.Authority.case_name) == case_name.lower(),
+        )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def pin_authority(
+    db: AsyncSession,
+    *,
+    matter_id: uuid.UUID,
+    user_id: uuid.UUID,
+    case_name: str,
+    citation: Optional[str] = None,
+    court: Optional[str] = None,
+    year: Optional[int] = None,
+    source_url: Optional[str] = None,
+    indian_kanoon_tid: Optional[str] = None,
+    proposition: str = "",
+    paragraphs: Optional[List[str]] = None,
+    notes: Optional[str] = None,
+    first_pinned_from_document_id: Optional[uuid.UUID] = None,
+    first_pinned_from_thread_id: Optional[uuid.UUID] = None,
+    first_pinned_from_answer_id: Optional[uuid.UUID] = None,
+) -> tuple[models.Authority, bool]:
+    """Idempotent pin. Returns (row, created) where `created` is False when
+    a matching row already existed (by IK tid or by lowercased case_name).
+
+    Callers commit the surrounding transaction; this only flushes."""
+    existing = await find_authority_by_dedup_key(
+        db,
+        matter_id=matter_id,
+        user_id=user_id,
+        indian_kanoon_tid=indian_kanoon_tid,
+        case_name=case_name,
+    )
+    if existing is not None:
+        return existing, False
+
+    row = models.Authority(
+        matter_id=matter_id,
+        user_id=user_id,
+        case_name=case_name.strip(),
+        citation=citation,
+        court=court,
+        year=year,
+        source_url=source_url,
+        indian_kanoon_tid=indian_kanoon_tid,
+        proposition=proposition or "",
+        paragraphs=paragraphs or [],
+        notes=notes,
+        first_pinned_from_document_id=first_pinned_from_document_id,
+        first_pinned_from_thread_id=first_pinned_from_thread_id,
+        first_pinned_from_answer_id=first_pinned_from_answer_id,
+    )
+    db.add(row)
+    await db.flush()
+    return row, True
+
+
+async def get_authority_owned_by(
+    db: AsyncSession, *, authority_id: uuid.UUID, user_id: uuid.UUID,
+) -> Optional[models.Authority]:
+    stmt = (
+        select(models.Authority)
+        .where(models.Authority.id == authority_id)
+        .where(models.Authority.user_id == user_id)
+        .where(models.Authority.deleted_at.is_(None))
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def update_authority(
+    db: AsyncSession,
+    *,
+    authority_id: uuid.UUID,
+    user_id: uuid.UUID,
+    fields: dict,
+) -> bool:
+    allowed = {
+        "case_name", "citation", "court", "year",
+        "proposition", "paragraphs", "notes", "sort_order",
+    }
+    payload = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not payload:
+        return False
+    payload["updated_at"] = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(models.Authority)
+        .where(models.Authority.id == authority_id)
+        .where(models.Authority.user_id == user_id)
+        .where(models.Authority.deleted_at.is_(None))
+        .values(**payload)
+    )
+    return result.rowcount > 0
+
+
+async def soft_delete_authority(
+    db: AsyncSession, *, authority_id: uuid.UUID, user_id: uuid.UUID,
+) -> bool:
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(models.Authority)
+        .where(models.Authority.id == authority_id)
+        .where(models.Authority.user_id == user_id)
+        .where(models.Authority.deleted_at.is_(None))
+        .values(deleted_at=now)
+    )
+    return result.rowcount > 0
+
+
 # ── LLM telemetry ───────────────────────────────────────────────────────────
 
 async def record_llm_call(

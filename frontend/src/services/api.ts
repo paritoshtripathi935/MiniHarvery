@@ -7,6 +7,7 @@
  * requests with 401 — there is no guest path.
  */
 import type {
+  Authority,
   CaseBriefDocument,
   Citation,
   DocumentRecord,
@@ -475,6 +476,120 @@ export async function generatePleadingDraft(
   }
   const json = await response.json();
   return { document: json.data, metrics: json.metrics ?? undefined };
+}
+
+// ── Authorities ──────────────────────────────────────────────────────────
+
+export async function listAuthorities(
+  matterId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<Authority[]> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/matters/${matterId}/authorities`,
+    {
+      method: 'GET',
+      headers: await buildHeaders(userId, getToken),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to load authorities (${response.status})`);
+  }
+  return (await response.json()).data.authorities;
+}
+
+export interface PinAuthorityInput {
+  case_name: string;
+  citation?: string;
+  court?: string;
+  year?: number;
+  source_url?: string;
+  indian_kanoon_tid?: string;
+  proposition?: string;
+  paragraphs?: string[];
+  notes?: string;
+  first_pinned_from_document_id?: string;
+  first_pinned_from_thread_id?: string;
+  first_pinned_from_answer_id?: string;
+}
+
+export interface PinAuthorityResult {
+  authority: Authority;
+  /** False when the same case was already pinned to this matter. */
+  created: boolean;
+}
+
+export async function pinAuthority(
+  matterId: string,
+  input: PinAuthorityInput,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<PinAuthorityResult> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/matters/${matterId}/authorities`,
+    {
+      method: 'POST',
+      headers: await buildHeaders(userId, getToken),
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to pin authority (${response.status})`);
+  }
+  const json = await response.json();
+  return { authority: json.data, created: Boolean(json.created) };
+}
+
+export type UpdateAuthorityInput = Partial<{
+  case_name: string;
+  citation: string;
+  court: string;
+  year: number;
+  proposition: string;
+  paragraphs: string[];
+  notes: string;
+  sort_order: number;
+}>;
+
+export async function updateAuthority(
+  authorityId: string,
+  fields: UpdateAuthorityInput,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<Authority> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/authorities/${authorityId}`,
+    {
+      method: 'PATCH',
+      headers: await buildHeaders(userId, getToken),
+      body: JSON.stringify(fields),
+    },
+  );
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to update authority (${response.status})`);
+  }
+  return (await response.json()).data;
+}
+
+export async function unpinAuthority(
+  authorityId: string,
+  userId?: string,
+  getToken?: GetToken,
+): Promise<void> {
+  const response = await fetch(
+    `${BASE_URL}/api/v1/authorities/${authorityId}`,
+    {
+      method: 'DELETE',
+      headers: await buildHeaders(userId, getToken),
+    },
+  );
+  if (!response.ok && response.status !== 204) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.detail ?? `Failed to unpin authority (${response.status})`);
+  }
 }
 
 // ── Conversational drafting (PAI-11) ─────────────────────────────────────

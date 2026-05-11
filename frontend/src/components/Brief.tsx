@@ -41,6 +41,16 @@ interface Props {
   onCitationClick: (citation: Citation, results: LegalSearchResult[]) => void;
   /** Fire a follow-up question inside the same thread. */
   onFollowUp?: (query: string) => void;
+  /** Pin a citation to the matter's Authorities list. When omitted, the
+   *  chip's pin button is hidden (e.g. on routes without a matter
+   *  context). The Set of pinned source URLs lets us mark already-pinned
+   *  chips so the user doesn't try to pin the same case twice. */
+  onPinCitation?: (
+    citation: Citation,
+    results: LegalSearchResult[],
+    answerId?: string,
+  ) => Promise<void> | void;
+  pinnedCitationUrls?: Set<string>;
 }
 
 type SectionKey =
@@ -199,6 +209,8 @@ export default function Brief({
   pinnedUrls: _pinnedUrls,
   onCitationClick,
   onFollowUp,
+  onPinCitation,
+  pinnedCitationUrls,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
@@ -348,6 +360,8 @@ export default function Brief({
               isFollowUp={idx > 0}
               onCitationClick={onCitationClick}
               onFollowUp={onFollowUp}
+              onPinCitation={onPinCitation}
+              pinnedCitationUrls={pinnedCitationUrls}
             />
           ))}
         </div>
@@ -367,11 +381,19 @@ function BriefTurn({
   isFollowUp,
   onCitationClick,
   onFollowUp,
+  onPinCitation,
+  pinnedCitationUrls,
 }: {
   turn: Message;
   isFollowUp: boolean;
   onCitationClick: (citation: Citation, results: LegalSearchResult[]) => void;
   onFollowUp?: (query: string) => void;
+  onPinCitation?: (
+    citation: Citation,
+    results: LegalSearchResult[],
+    answerId?: string,
+  ) => Promise<void> | void;
+  pinnedCitationUrls?: Set<string>;
 }) {
   const displayText = turn.answer ? turn.answer.content : (turn.streamingText ?? '');
   const isStreaming = turn.isAnswering && !turn.answer;
@@ -572,16 +594,34 @@ function BriefTurn({
             Citations in this brief
           </h2>
           <div className="flex flex-wrap gap-2">
-            {turn.answer.citations.map((citation, i) => (
-              <span
-                key={i}
-                onClick={() => onCitationClick(citation, turn.search_results)}
-                className="cursor-pointer"
-                title="Find in Sources panel"
-              >
-                <CitationChip citation={citation} />
-              </span>
-            ))}
+            {turn.answer.citations.map((citation, i) => {
+              const pinned =
+                citation.url != null &&
+                pinnedCitationUrls?.has(citation.url) === true;
+              return (
+                <span
+                  key={i}
+                  onClick={() => onCitationClick(citation, turn.search_results)}
+                  className="cursor-pointer"
+                  title="Find in Sources panel"
+                >
+                  <CitationChip
+                    citation={citation}
+                    onPin={
+                      onPinCitation
+                        ? () =>
+                            onPinCitation(
+                              citation,
+                              turn.search_results,
+                              turn.id,
+                            )
+                        : undefined
+                    }
+                    isPinned={pinned}
+                  />
+                </span>
+              );
+            })}
           </div>
         </section>
       )}
