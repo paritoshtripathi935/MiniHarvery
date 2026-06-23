@@ -13,7 +13,7 @@
  */
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { SignedIn, SignedOut } from '@clerk/clerk-react';
-import LoginPage from './components/LoginPage';
+import LandingPage from './pages/LandingPage';
 import AppLayout from './layout/AppLayout';
 import TodayPage from './pages/TodayPage';
 import MattersPage from './pages/MattersPage';
@@ -29,7 +29,8 @@ export default function App() {
   return (
     <>
       <SignedOut>
-        <LoginPage />
+        {/* Public marketing page (PAI-39); its CTAs flip to LoginPage / Clerk */}
+        <LandingPage />
       </SignedOut>
       <SignedIn>
         <BrowserRouter>
