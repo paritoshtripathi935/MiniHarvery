@@ -23,7 +23,7 @@
   --text-bright: #e5e7eb;      /* memo body */
   --text-secondary: #d1d5db;
   --text-muted: #9ca3af;
-  --text-dim: #6b7280;
+  --text-dim: #7d8494;         /* 4.8:1 on cards (WCAG AA) */
   --text-conclusion: #f0e8d0;  /* warm cream on dark */
 
   --accent: #d4a017;           /* gold */
@@ -47,13 +47,13 @@
   --text-bright: #0f1420;
   --text-secondary: #2f3544;
   --text-muted: #5b6370;
-  --text-dim: #7a8292;
+  --text-dim: #646b79;         /* 4.8:1 on paper (WCAG AA) */
   --text-conclusion: #3a2f10;   /* dark umber on cream */
 
-  --accent: #a6780a;            /* deeper gold for legibility on paper */
-  --accent-bright: #8a620a;
-  --accent-soft: rgba(166, 120, 10, 0.35);
-  --accent-flash: rgba(166, 120, 10, 0.55);
+  --accent: #8a620a;            /* deeper gold: 5.5:1 with white text, 4.9:1 on paper */
+  --accent-bright: #74520a;
+  --accent-soft: rgba(138, 98, 10, 0.35);
+  --accent-flash: rgba(138, 98, 10, 0.55);
 }
 
 * {

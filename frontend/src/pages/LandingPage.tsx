@@ -49,10 +49,10 @@ const TIERS = [
 ];
 /* Curved connector traced behind the How-It-Works steps (01 → 02 → 03) */
 const TRACK = 'M0 32 C 250 -8, 750 72, 1000 32';
-const FOOTER: [string, string[]][] = [
-  ['Product', ['Features', 'Pricing', 'Case Studies']],
-  ['Company', ['About', 'Blog', 'Contact']],
-  ['Legal', ['Privacy Policy', 'Terms of Service']],
+// Only links with a real destination; add Privacy/Terms once those pages exist.
+const FOOTER: [string, [string, string][]][] = [
+  ['Product', [['Features', '#features'], ['How it works', '#how'], ['Pricing', '#pricing']]],
+  ['Project', [['Source code', 'https://github.com/paritoshtripathi935/MiniHarvery'], ['Built by Paritosh', 'https://www.paritosh.online/']]],
 ];
 
 /* ── tiny building blocks ─────────────────────────────────────── */
@@ -135,11 +135,11 @@ export default function LandingPage() {
           </span>
           <div className="hidden md:flex items-center gap-8 text-[13px] font-medium">
             {[['Features', '#features'], ['How it works', '#how'], ['Pricing', '#pricing']].map(([l, h]) => (
-              <a key={l} href={h} className="hover:opacity-70 transition-opacity" style={dim}>{l}</a>
+              <a key={l} href={h} className="py-2 hover:opacity-70 transition-opacity" style={dim}>{l}</a>
             ))}
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={go} className="hidden md:block text-[13px] font-medium cursor-pointer"
+            <button onClick={go} className="text-[13px] font-medium cursor-pointer py-2"
               style={{ color: t.color.text }}>
               Sign in
             </button>
@@ -180,7 +180,7 @@ export default function LandingPage() {
 
         {/* Trust strip */}
         <div className="text-center mb-24 md:mb-32">
-          <p className="text-xs uppercase tracking-wider mb-4" style={dim}>Trusted by advocates researching across</p>
+          <p className="text-xs uppercase tracking-wider mb-4" style={dim}>Searches judgments from</p>
           <p className="text-sm opacity-70" style={{ ...mono, ...muted }}>{COURTS.join('  ·  ')}</p>
         </div>
 
@@ -194,7 +194,7 @@ export default function LandingPage() {
               </div>
               <div className="flex-grow flex justify-center">
                 <span className="flex items-center gap-2 px-4 py-1 rounded text-xs" style={{ ...mono, ...dim, background: t.color.surface, border: hairline }}>
-                  <Lock size={11} /> app.vidhilegal.com/workspace
+                  <Lock size={11} /> vidhi.paritosh.online/workspace
                 </span>
               </div>
             </div>
@@ -278,16 +278,6 @@ export default function LandingPage() {
                 {['Indian Kanoon', 'India Code', 'Google'].map(s => <Tag key={s}>{s}</Tag>)}
               </div>
             </div>
-            <div className="flex flex-col items-center justify-center text-center" style={card}>
-              <FolderOpen size={22} className="mb-2" style={gold} />
-              <h3 className="text-lg font-semibold" style={serif}>Matters</h3>
-              <p className="text-xs mt-1" style={dim}>Cases & drafts in one file</p>
-            </div>
-            <div className="flex flex-col items-center justify-center text-center" style={card}>
-              <Download size={22} className="mb-2" style={gold} />
-              <h3 className="text-lg font-semibold" style={serif}>Export</h3>
-              <p className="text-xs mt-1" style={dim}>Markdown + PDF</p>
-            </div>
             <div className="md:col-span-3 flex items-center justify-between overflow-hidden" style={card}>
               <h3 className="text-lg font-semibold whitespace-nowrap mr-4" style={serif}>Citations you can trust</h3>
               <div className="flex gap-2 opacity-70 overflow-x-auto">
@@ -302,6 +292,17 @@ export default function LandingPage() {
                 <span data-theme="dark" title="Chambers (Navy)" className="w-8 h-8 rounded-full" style={{ background: 'var(--bg)', border: hairline }} />
                 <span data-theme="light" title="Paper (Cream)" className="w-8 h-8 rounded-full" style={{ background: 'var(--bg)', border: `1px solid ${t.color.border}` }} />
               </div>
+            </div>
+            {/* span 2 each so the last row fills all 4 columns */}
+            <div className="md:col-span-2 flex flex-col items-center justify-center text-center" style={card}>
+              <FolderOpen size={22} className="mb-2" style={gold} />
+              <h3 className="text-lg font-semibold" style={serif}>Matters</h3>
+              <p className="text-xs mt-1" style={dim}>Cases & drafts in one file</p>
+            </div>
+            <div className="md:col-span-2 flex flex-col items-center justify-center text-center" style={card}>
+              <Download size={22} className="mb-2" style={gold} />
+              <h3 className="text-lg font-semibold" style={serif}>Export</h3>
+              <p className="text-xs mt-1" style={dim}>Markdown + PDF</p>
             </div>
           </div>
         </section>
@@ -506,7 +507,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="pt-16 pb-8" style={{ background: t.color.surface, borderTop: hairline }}>
         <div className="max-w-[1200px] mx-auto px-4 md:px-12">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12 mb-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-12 mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 mb-4" style={serif}>
                 <Scale size={20} style={gold} />
@@ -518,7 +519,7 @@ export default function LandingPage() {
               <div key={h}>
                 <h4 className="text-sm font-semibold uppercase tracking-wider mb-4">{h}</h4>
                 <ul className="space-y-3 text-sm" style={muted}>
-                  {links.map(l => <li key={l}><a href="#" className="hover:opacity-70 transition-opacity">{l}</a></li>)}
+                  {links.map(([l, href]) => <li key={l}><a href={href} className="hover:opacity-70 transition-opacity">{l}</a></li>)}
                 </ul>
               </div>
             ))}

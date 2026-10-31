@@ -12,7 +12,7 @@
  * route reads from there (no per-route refetch).
  */
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { SignedIn, SignedOut } from '@clerk/clerk-react';
+import { ClerkLoading, SignedIn, SignedOut } from '@clerk/clerk-react';
 import LandingPage from './pages/LandingPage';
 import AppLayout from './layout/AppLayout';
 import TodayPage from './pages/TodayPage';
@@ -28,6 +28,12 @@ export default function App() {
   useTheme();
   return (
     <>
+      {/* SignedIn/SignedOut render nothing until Clerk loads; avoid a blank screen */}
+      <ClerkLoading>
+        <div role="status" className="min-h-screen grid place-items-center text-sm" style={{ color: 'var(--text-muted)' }}>
+          Loading Vidhi…
+        </div>
+      </ClerkLoading>
       <SignedOut>
         {/* Public marketing page (PAI-39); its CTAs flip to LoginPage / Clerk */}
         <LandingPage />
