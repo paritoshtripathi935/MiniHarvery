@@ -1,78 +1,32 @@
 /**
- * App — Router shell. Each route owns its layout below the AppLayout
- * chrome (NavRail + breadcrumbs).
- *
- *   /                  Today (landing dashboard)
- *   /matters           Matter list
- *   /matters/:id       Matter detail (the 3-pane research workbench)
- *   /inbox             Friendly alias — redirects to user's Inbox matter
- *
- * Authentication is gated at the root (Clerk's <SignedIn>/<SignedOut>);
- * once signed in, MattersProvider hydrates the matter list once and every
- * route reads from there (no per-route refetch).
+ * App — auth gate. Signed-out visitors get the marketing page; signed-in
+ * users get the lazy-loaded AuthedApp (routes documented there).
  */
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { ClerkLoading, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { lazy, Suspense } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import LandingPage from './pages/LandingPage';
-import AppLayout from './layout/AppLayout';
-import TodayPage from './pages/TodayPage';
-import MattersPage from './pages/MattersPage';
-import MatterDetailPage from './pages/MatterDetailPage';
-import DocumentDetailPage from './pages/DocumentDetailPage';
-import DraftingChatPage from './pages/DraftingChatPage';
-import PrintPage from './pages/PrintPage';
-import { MattersProvider } from './state/MattersContext';
 import { useTheme } from './hooks/useTheme';
+
+const AuthedApp = lazy(() => import('./AuthedApp'));
+
+// Clerk keeps a `__client_uat` cookie (0 = signed out) on this domain. If no
+// cookie says "signed in", show the landing page without waiting ~1-2s for
+// Clerk to load; signed-in users still wait so they never see it flash.
+function likelySignedOut() {
+  const uats = [...document.cookie.matchAll(/(?:^|; )__client_uat(?:_[^=]*)?=([^;]*)/g)];
+  return uats.every(m => !m[1] || m[1] === '0');
+}
+
+const Loading = () => (
+  <div role="status" className="min-h-screen grid place-items-center text-sm" style={{ color: 'var(--text-muted)' }}>
+    Loading Vidhi…
+  </div>
+);
 
 export default function App() {
   useTheme();
-  return (
-    <>
-      {/* SignedIn/SignedOut render nothing until Clerk loads; avoid a blank screen */}
-      <ClerkLoading>
-        <div role="status" className="min-h-screen grid place-items-center text-sm" style={{ color: 'var(--text-muted)' }}>
-          Loading Vidhi…
-        </div>
-      </ClerkLoading>
-      <SignedOut>
-        {/* Public marketing page (PAI-39); its CTAs flip to LoginPage / Clerk */}
-        <LandingPage />
-      </SignedOut>
-      <SignedIn>
-        <BrowserRouter>
-          <MattersProvider>
-            <Routes>
-              {/* Chrome-less route — the print page renders pure document
-                  body so the OS print dialog produces a clean PDF. */}
-              <Route path="print" element={<PrintPage />} />
-              <Route element={<AppLayout />}>
-                <Route index element={<TodayPage />} />
-                <Route path="matters" element={<MattersPage />} />
-                <Route path="matters/:matterId" element={<MatterDetailPage />} />
-                <Route
-                  path="matters/:matterId/documents/:documentId"
-                  element={<DocumentDetailPage />}
-                />
-                {/* Conversational drafting (PAI-11) — full-page chat that
-                    collects template fields. Both with and without a
-                    matter context: matter-less drafts pick a target
-                    matter (defaulting to Inbox) at generation time. */}
-                <Route
-                  path="drafting/:templateId"
-                  element={<DraftingChatPage />}
-                />
-                <Route
-                  path="matters/:matterId/drafting/:templateId"
-                  element={<DraftingChatPage />}
-                />
-                {/* /inbox resolves to the user's Inbox matter inside AppLayout */}
-                <Route path="inbox" element={<TodayPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Route>
-            </Routes>
-          </MattersProvider>
-        </BrowserRouter>
-      </SignedIn>
-    </>
-  );
+  const { isLoaded, isSignedIn } = useAuth();
+  if (isSignedIn) return <Suspense fallback={<Loading />}><AuthedApp /></Suspense>;
+  if (isLoaded || likelySignedOut()) return <LandingPage />;
+  return <Loading />;
 }

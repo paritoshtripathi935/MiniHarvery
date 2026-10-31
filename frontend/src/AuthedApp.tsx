@@ -1,0 +1,61 @@
+/**
+ * AuthedApp — signed-in router shell, lazy-loaded so the landing
+ * page doesn't download the whole app. Each route owns its layout below the AppLayout
+ * chrome (NavRail + breadcrumbs).
+ *
+ *   /                  Today (landing dashboard)
+ *   /matters           Matter list
+ *   /matters/:id       Matter detail (the 3-pane research workbench)
+ *   /inbox             Friendly alias — redirects to user's Inbox matter
+ *
+ * App.tsx only renders this once Clerk reports a signed-in user;
+ * once signed in, MattersProvider hydrates the matter list once and every
+ * route reads from there (no per-route refetch).
+ */
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import AppLayout from './layout/AppLayout';
+import TodayPage from './pages/TodayPage';
+import MattersPage from './pages/MattersPage';
+import MatterDetailPage from './pages/MatterDetailPage';
+import DocumentDetailPage from './pages/DocumentDetailPage';
+import DraftingChatPage from './pages/DraftingChatPage';
+import PrintPage from './pages/PrintPage';
+import { MattersProvider } from './state/MattersContext';
+
+export default function AuthedApp() {
+  return (
+    <BrowserRouter>
+      <MattersProvider>
+        <Routes>
+          {/* Chrome-less route — the print page renders pure document
+              body so the OS print dialog produces a clean PDF. */}
+          <Route path="print" element={<PrintPage />} />
+          <Route element={<AppLayout />}>
+            <Route index element={<TodayPage />} />
+            <Route path="matters" element={<MattersPage />} />
+            <Route path="matters/:matterId" element={<MatterDetailPage />} />
+            <Route
+              path="matters/:matterId/documents/:documentId"
+              element={<DocumentDetailPage />}
+            />
+            {/* Conversational drafting (PAI-11) — full-page chat that
+                collects template fields. Both with and without a
+                matter context: matter-less drafts pick a target
+                matter (defaulting to Inbox) at generation time. */}
+            <Route
+              path="drafting/:templateId"
+              element={<DraftingChatPage />}
+            />
+            <Route
+              path="matters/:matterId/drafting/:templateId"
+              element={<DraftingChatPage />}
+            />
+            {/* /inbox resolves to the user's Inbox matter inside AppLayout */}
+            <Route path="inbox" element={<TodayPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </MattersProvider>
+    </BrowserRouter>
+  );
+}

@@ -24,6 +24,14 @@ interface Slide {
   };
 }
 
+// The originals are up to 7 MB each (~21 MB for all slides); Wikimedia's
+// standard thumbnail widths are a few hundred KB. SVGs render to PNG.
+function wikiThumb(url: string) {
+  const file = url.slice(url.lastIndexOf('/') + 1);
+  const svg = file.endsWith('.svg');
+  return `${url.replace('/wikipedia/commons/', '/wikipedia/commons/thumb/')}/${svg ? 960 : 1280}px-${file}${svg ? '.png' : ''}`;
+}
+
 const SLIDES: Slide[] = [
   {
     image:
@@ -177,7 +185,7 @@ export default function LoginPage() {
             className="absolute inset-0 transition-opacity duration-[1500ms] ease-in-out"
             style={{
               opacity: i === slideIdx ? 1 : 0,
-              backgroundImage: `url("${slide.image}")`,
+              backgroundImage: `url("${wikiThumb(slide.image)}")`,
               backgroundSize: 'cover',
               backgroundPosition: 'top center',
               transform: i === slideIdx ? 'scale(1.04)' : 'scale(1)',
